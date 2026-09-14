@@ -17,7 +17,9 @@ Mở `index.html` bằng trình duyệt. Trang chạy hoàn toàn ở phía trì
 - Chọn chương ở cột bên trái, bấm vào đáp án để xem kết quả và lời giải.
 - Ô tìm kiếm lọc theo từ khóa trên cả 360 câu, ví dụ constructor, virtual, static, interface.
 - Bộ lọc giúp xem riêng những câu chưa làm hoặc đã làm sai.
-- Bốc đề ngẫu nhiên theo phạm vi và số lượng, chấm điểm ở cuối. Số câu tối đa bằng số câu có trong phạm vi, riêng cả sáu chương thì trần là 90.
+- Thi thử đề chuẩn 90 câu, đúng số câu của đề thi thật, rút từ ngân hàng theo tỉ lệ số câu mỗi chương: chương I 3 câu, II 20, III 20, IV 7, V 20, VI 20.
+- Hoặc bốc đề tự chọn theo phạm vi và số lượng. Số câu tối đa bằng số câu có trong phạm vi, riêng cả sáu chương thì trần là 90.
+- Trong lúc làm đề có danh sách số câu để nhảy qua lại, nộp bài xong mới chấm và mới hiện lời giải.
 - Trên điện thoại có thanh điều hướng dưới đáy: Chương, Tìm, Luyện đề, Xếp hạng.
 
 ## Tài khoản và điểm

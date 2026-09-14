@@ -643,9 +643,19 @@ select {
 }
 
 .wrong-list a:hover { color: var(--accent); }
+.wrong-list b {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin-right: 6px;
+}
 
 .foot {
   margin-top: 40px;
+  position: relative;
+  z-index: 0;
   padding-top: 18px;
   border-top: 1px solid var(--line);
   font-size: 12.5px;
@@ -788,7 +798,7 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
-.editor-side { display: grid; gap: 6px; justify-items: stretch; }
+.editor-side { display: grid; gap: 6px; justify-items: stretch; min-width: 132px; }
 
 .run-go {
   border: 1px solid var(--accent);
@@ -919,8 +929,62 @@ table.board tr.me td { color: var(--accent); font-weight: 500; }
 }
 
 .whoami:hover { border-color: var(--accent); }
-.whoami .who-name { font-size: 13.5px; font-weight: 500; }
+.whoami { max-width: 46vw; }
+.whoami .who-name {
+  font-size: 13.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .whoami .who-pts { font-size: 11.5px; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+.exam-card { border-left: 3px solid var(--accent); }
+
+.padwrap {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+
+.padwrap > summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.padwrap > summary::-webkit-details-marker { display: none; }
+.padwrap > summary::after { content: " ▾"; color: var(--ink-3); }
+.padwrap[open] > summary::after { content: " ▴"; }
+
+.pads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-top: 10px;
+}
+
+.pad {
+  min-width: 32px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 6px;
+  padding: 5px 2px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+
+.pad:hover { border-color: var(--accent); color: var(--accent); }
+.pad.did { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--accent-deep); }
+.pad.now { border-color: var(--ink); color: var(--ink); font-weight: 600; }
+.pad:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.quiz-nav { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 
 @media (max-width: 880px) {
   .shell { padding-block: 0 100px; }
@@ -997,6 +1061,10 @@ table.board tr.me td { color: var(--accent); font-weight: 500; }
   .masthead-row { gap: 10px; }
   .whoami { padding: 7px 10px; }
   .panel { padding: 16px 14px; }
+  .editor-side { min-width: 0; }
+  .pad { min-width: 34px; padding: 7px 2px; }
+  .quiz-nav { gap: 10px; }
+  .quiz-nav .solid-btn { flex: 1 1 auto; text-align: center; }
   .card-head { gap: 6px 10px; }
   .topic { margin-left: 0; text-align: left; flex-basis: 100%; max-width: none; font-size: 11.5px; }
   .stem { font-size: 15.5px; }

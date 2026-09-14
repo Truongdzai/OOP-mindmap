@@ -15,6 +15,7 @@
   var PER_RIGHT = 10;
   var PER_10MIN = 2;
   var PER_GOOD_QUIZ = 25;
+  var EXAM_SIZE = 90;
 
   function readJson(key, fallback) {
     try {
@@ -83,7 +84,7 @@
     quiz: null,
     runners: {},
     board: null,
-    boardNote: 'Chưa nối được bảng xếp hạng chung. Đang hiện những hồ sơ trên máy này.',
+    boardNote: 'Chưa nối được bảng chung, đang hiện hồ sơ trên máy này.',
     authMsg: ''
   };
 
@@ -356,8 +357,9 @@
       '</div></div>' + out + '</div>';
   }
 
-  function questionCard(q, ch, showChapter) {
-    var picked = profile.answers[q.id];
+  function questionCard(q, ch, showChapter, source) {
+    var exam = !!source;
+    var picked = (source || profile.answers)[q.id];
     var cls = 'card';
     if (picked) cls += picked === q.ans ? ' is-right' : ' is-wrong';
 
@@ -383,7 +385,7 @@
     var verdict = picked
       ? '<div class="verdict ' + (picked === q.ans ? 'right' : 'wrong') + '">' +
         (picked === q.ans ? 'Đúng rồi, +' + PER_RIGHT + ' điểm' : 'Chưa đúng. Đáp án là ' + q.ans) +
-        '<button class="icon-btn" data-retry="' + q.id + '">Thử lại</button></div>'
+        (exam ? '' : '<button class="icon-btn" data-retry="' + q.id + '">Thử lại</button>') + '</div>'
       : '';
 
     var why = picked ? '<div class="why"><span class="label">Vì sao chọn ' + q.ans + '</span>' +
@@ -453,8 +455,8 @@
 
   function countChoices(scope) {
     var size = poolSize(scope);
-    var cap = scope ? size : 90;
-    var steps = [10, 20, 30, 40, 50, 60, 90];
+    var cap = scope ? size : EXAM_SIZE;
+    var steps = [10, 20, 30, 40, 50, 60, EXAM_SIZE];
     var out = steps.filter(function (n) { return n <= Math.min(cap, size); });
     if (!out.length || out[out.length - 1] < Math.min(cap, size)) out.push(Math.min(cap, size));
     return out;
@@ -468,13 +470,33 @@
     }).join('');
   }
 
+  function examQuotas(n) {
+    var total = allQuestions.length;
+    var parts = DATA.chapters.map(function (ch) {
+      var exact = ch.qs.length / total * n;
+      return { ch: ch, base: Math.floor(exact), frac: exact - Math.floor(exact) };
+    });
+    var left = n - parts.reduce(function (a, p) { return a + p.base; }, 0);
+    parts.slice().sort(function (a, b) { return b.frac - a.frac; }).forEach(function (p) {
+      if (left > 0) { p.base++; left--; }
+    });
+    return parts;
+  }
+
   function renderQuizSetup() {
-    var scopeOpts = '<option value="0">Cả sáu chương (tối đa 90 câu)</option>' + DATA.chapters.map(function (ch) {
+    var scopeOpts = '<option value="0">Cả sáu chương</option>' + DATA.chapters.map(function (ch) {
       return '<option value="' + ch.n + '">Chương ' + ROMAN[ch.n] + ' · ' + esc(ch.title) + ' (' + ch.qs.length + ' câu)</option>';
     }).join('');
-    return '<div class="quiz-setup">' +
-      '<h2>Bốc đề ngẫu nhiên</h2>' +
-      '<p class="count-line">Số câu tối đa bằng số câu có trong phạm vi bạn chọn. Cả sáu chương thì trần là 90 câu.</p>' +
+    var quotas = examQuotas(EXAM_SIZE).map(function (p) {
+      return 'chương ' + ROMAN[p.ch.n] + ' ' + p.base + ' câu';
+    }).join(', ');
+    return '<div class="panel exam-card">' +
+      '<h2>Đề chuẩn ' + EXAM_SIZE + ' câu</h2>' +
+      '<p class="count-line">Giống đề thi thật: ' + EXAM_SIZE + ' câu rút từ ngân hàng này, chia theo tỉ lệ số câu của từng chương. Lần bốc này sẽ lấy ' + quotas + '.</p>' +
+      '<button class="solid-btn" id="exam-start">Vào thi thử</button></div>' +
+      '<div class="quiz-setup">' +
+      '<h2>Bốc đề tự chọn</h2>' +
+      '<p class="count-line">Số câu tối đa bằng số câu có trong phạm vi bạn chọn, riêng cả sáu chương thì trần là ' + EXAM_SIZE + '.</p>' +
       '<label class="field" for="quiz-scope"><span>Phạm vi</span>' +
       '<select id="quiz-scope">' + scopeOpts + '</select></label>' +
       '<label class="field" for="quiz-count"><span>Số câu</span>' +
@@ -485,40 +507,63 @@
   function renderQuizRun() {
     var qz = state.quiz;
     var item = qz.items[qz.index];
+    var pads = qz.items.map(function (it, i) {
+      var cls = 'pad';
+      if (i === qz.index) cls += ' now';
+      else if (qz.picks[it.q.id]) cls += ' did';
+      return '<button class="' + cls + '" data-jump="' + i + '">' + (i + 1) + '</button>';
+    }).join('');
+    var nav = '<details class="padwrap"><summary>Danh sách câu · đã làm ' +
+      qz.answeredCount + '/' + qz.items.length + '</summary><div class="pads">' + pads + '</div></details>';
+    var prev = qz.index > 0 ? '<button class="run-mini" id="quiz-prev">Câu trước</button>' : '';
+    var next = qz.index + 1 < qz.items.length
+      ? '<button class="solid-btn" id="quiz-next">Câu tiếp</button>'
+      : '<button class="solid-btn" id="quiz-next">Nộp bài</button>';
     return '<div class="quiz-run">' +
-      '<div class="quiz-bar"><span>Câu ' + (qz.index + 1) + ' / ' + qz.items.length + '</span>' +
-      '<span>Đúng ' + qz.right + '</span>' +
-      '<button class="icon-btn" id="quiz-quit">Dừng, xem điểm</button></div>' +
-      questionCard(item.q, item.ch, true) +
-      (qz.picks[item.q.id] ? '<button class="solid-btn" id="quiz-next">' +
-        (qz.index + 1 === qz.items.length ? 'Xem điểm' : 'Câu tiếp') + '</button>' : '') +
-      '</div>';
+      '<div class="quiz-bar"><span>' + esc(qz.title) + '</span>' +
+      '<span>Câu ' + (qz.index + 1) + ' / ' + qz.items.length + '</span>' +
+      '<span>Đã làm ' + qz.answeredCount + '</span>' +
+      '<button class="icon-btn" id="quiz-quit">Nộp sớm</button></div>' + nav +
+      questionCard(item.q, item.ch, true, qz.picks) +
+      '<div class="quiz-nav">' + prev + next + '</div></div>';
   }
 
   function renderQuizDone() {
     var qz = state.quiz;
-    var total = qz.answeredCount || qz.items.length;
+    var total = qz.items.length;
     var pct = total ? Math.round(qz.right / total * 100) : 0;
     var wrong = qz.items.filter(function (item) {
       var p = qz.picks[item.q.id];
       return p && p !== item.q.ans;
     });
-    var list = wrong.length
-      ? '<div class="wrong-list">' + wrong.map(function (item) {
-          return '<a href="#" data-goto="' + item.q.id + '">Chương ' + item.ch.n + ' · Câu ' + item.q.n + ' — ' + esc(item.q.stem.slice(0, 80)) + '</a>';
-        }).join('') + '</div>'
-      : '<p class="count-line">Không sai câu nào.</p>';
+    var missed = qz.items.filter(function (item) { return !qz.picks[item.q.id]; });
+    function linkRow(item, tag) {
+      return '<a href="#" data-goto="' + item.q.id + '"><b>' + tag + '</b> Chương ' + item.ch.n +
+        ' · Câu ' + item.q.n + ' — ' + esc(item.q.stem.slice(0, 80)) + '</a>';
+    }
+    var list = (wrong.length || missed.length)
+      ? '<div class="wrong-list">' +
+        wrong.map(function (i) { return linkRow(i, 'Sai'); }).join('') +
+        missed.slice(0, 40).map(function (i) { return linkRow(i, 'Bỏ trống'); }).join('') +
+        (missed.length > 40 ? '<span class="count-line">Còn ' + (missed.length - 40) + ' câu bỏ trống nữa.</span>' : '') +
+        '</div>'
+      : '<p class="count-line">Không sai câu nào, cũng không bỏ câu nào.</p>';
     var bonus = pct >= 80 ? '<p class="count-line">Đạt từ 80% trở lên, cộng thêm ' + PER_GOOD_QUIZ + ' điểm.</p>' : '';
+    var mins = Math.max(1, Math.round((Date.now() - qz.startedAt) / 60000));
+    var skipped = total - qz.answeredCount;
+    var meta = '<p class="count-line">' + esc(qz.title) + ' · làm trong ' + mins + ' phút' +
+      (skipped ? ' · bỏ trống ' + skipped + ' câu' : '') + '</p>';
     return '<div class="quiz-done"><h2>Xong rồi</h2>' +
-      '<p class="score">' + qz.right + '/' + total + ' · ' + pct + '%</p>' + bonus +
+      '<p class="score">' + qz.right + '/' + total + ' · ' + pct + '%</p>' + meta + bonus +
       '<span class="count-line">Mấy câu nên xem lại</span>' + list +
       '<button class="solid-btn" id="quiz-again">Bốc đề khác</button></div>';
   }
 
   function renderBoard() {
-    var rows = state.board && state.board.length ? state.board : localBoard();
-    var note = state.board && state.board.length ? '' :
-      '<p class="count-line">' + esc(state.boardNote) + '</p>';
+    var online = !!state.board && state.board.length > 0;
+    var rows = online ? state.board : localBoard();
+    var note = online ? '' : '<p class="count-line">' + esc(state.board ?
+      'Bảng chung chưa có ai, đây là hồ sơ trên máy này.' : state.boardNote) + '</p>';
     var me = accounts.current;
     var body = rows.length
       ? rows.map(function (r, i) {
@@ -535,7 +580,8 @@
       '<th>#</th><th>Tên</th><th class="num">Điểm</th><th class="num">Câu đúng</th><th class="num">Giờ ôn</th>' +
       '</tr></thead><tbody>' + body + '</tbody></table></div>' +
       '<p class="count-line">Xếp theo điểm, bằng điểm thì ai đúng nhiều câu hơn đứng trên. ' +
-      'Ai mở được trang cũng ghi được vào bảng, nên cứ xem cho vui, đừng coi là kết quả chính thức.</p>' +
+      (online ? 'Bảng dùng chung, chỉ những ai đã đăng nhập mới có tên. ' : '') +
+      'Không có kiểm tra phía máy chủ, ai mở được trang cũng ghi được vào bảng.</p>' +
       '</div>';
   }
 
@@ -822,21 +868,30 @@
       return;
     }
 
+    var jumpTo = e.target.closest('[data-jump]');
+    if (jumpTo && state.quiz) {
+      state.quiz.index = Number(jumpTo.dataset.jump);
+      render();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
     var pick = e.target.closest('[data-pick]');
     if (pick) {
       var qid = pick.dataset.qid;
+      if (state.quiz && state.view === 'quiz-run') {
+        var qz = state.quiz;
+        if (qz.picks[qid]) return;
+        qz.picks[qid] = pick.dataset.pick;
+        qz.answeredCount++;
+        if (pick.dataset.pick === byId(qid).q.ans) qz.right++;
+        render();
+        return;
+      }
       if (profile.answers[qid]) return;
       profile.answers[qid] = pick.dataset.pick;
       saveProfile();
       pushBoard();
-      if (state.quiz && state.view === 'quiz-run') {
-        var current = state.quiz.items[state.quiz.index];
-        if (!state.quiz.picks[qid]) {
-          state.quiz.picks[qid] = pick.dataset.pick;
-          state.quiz.answeredCount++;
-          if (pick.dataset.pick === current.q.ans) state.quiz.right++;
-        }
-      }
       render();
       var card = document.getElementById('q-' + qid);
       if (card && state.view !== 'quiz-run') card.scrollIntoView({ block: 'nearest' });
@@ -910,40 +965,82 @@
       return;
     }
 
+    if (e.target.id === 'exam-start') {
+      var picked = [];
+      examQuotas(EXAM_SIZE).forEach(function (p) {
+        picked = picked.concat(shuffled(p.ch.qs.map(function (q) {
+          return { q: q, ch: p.ch };
+        })).slice(0, p.base));
+      });
+      beginQuiz(shuffled(picked), 'Đề chuẩn ' + EXAM_SIZE + ' câu');
+      return;
+    }
+
     if (e.target.id === 'quiz-start') {
       var scope = Number(document.getElementById('quiz-scope').value);
       var count = Number(document.getElementById('quiz-count').value);
-      var pool = allQuestions.filter(function (it) { return !scope || it.ch.n === scope; }).slice();
-      for (var i = pool.length - 1; i > 0; i--) {
-        var j = Math.floor(Math.random() * (i + 1));
-        var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
-      }
-      var items = pool.slice(0, Math.min(count, pool.length));
-      items.forEach(function (it) { delete profile.answers[it.q.id]; });
-      saveProfile();
-      state.quiz = { items: items, index: 0, right: 0, picks: {}, answeredCount: 0 };
-      state.view = 'quiz-run';
+      var pool = shuffled(allQuestions.filter(function (it) { return !scope || it.ch.n === scope; }));
+      var label = scope ? 'Chương ' + ROMAN[scope] : 'Cả sáu chương';
+      beginQuiz(pool.slice(0, Math.min(count, pool.length)), label + ' · ' + Math.min(count, pool.length) + ' câu');
+      return;
+    }
+
+    if (e.target.id === 'quiz-prev') {
+      state.quiz.index = Math.max(0, state.quiz.index - 1);
       render();
       window.scrollTo({ top: 0, behavior: 'smooth' });
       return;
     }
 
     if (e.target.id === 'quiz-next') {
-      if (state.quiz.index + 1 >= state.quiz.items.length) finishQuiz();
-      else { state.quiz.index++; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+      if (state.quiz.index + 1 >= state.quiz.items.length) {
+        var left = state.quiz.items.length - state.quiz.answeredCount;
+        if (left && !window.confirm('Còn ' + left + ' câu chưa làm. Nộp bài luôn?')) return;
+        finishQuiz();
+      } else {
+        state.quiz.index++;
+        render();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
       return;
     }
 
-    if (e.target.id === 'quiz-quit') { finishQuiz(); return; }
+    if (e.target.id === 'quiz-quit') {
+      var rest = state.quiz.items.length - state.quiz.answeredCount;
+      if (rest && !window.confirm('Còn ' + rest + ' câu chưa làm. Nộp bài luôn?')) return;
+      finishQuiz();
+      return;
+    }
 
     if (e.target.id === 'quiz-again') { goto('quiz-setup'); }
   });
 
+  function shuffled(list) {
+    var a = list.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  function beginQuiz(items, title) {
+    state.quiz = {
+      items: items, index: 0, right: 0, picks: {},
+      answeredCount: 0, title: title, startedAt: Date.now()
+    };
+    state.view = 'quiz-run';
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
   function finishQuiz() {
     var qz = state.quiz;
-    var total = qz.answeredCount || qz.items.length;
-    profile.quizzes.push({ at: Date.now(), right: qz.right, total: total });
-    if (profile.quizzes.length > 60) profile.quizzes = profile.quizzes.slice(-60);
+    Object.keys(qz.picks).forEach(function (id) { profile.answers[id] = qz.picks[id]; });
+    if (qz.answeredCount) {
+      profile.quizzes.push({ at: Date.now(), right: qz.right, total: qz.items.length });
+      if (profile.quizzes.length > 60) profile.quizzes = profile.quizzes.slice(-60);
+    }
     saveProfile();
     pushBoard();
     state.view = 'quiz-done';
