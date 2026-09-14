@@ -2,9 +2,9 @@
 <html lang="vi">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ôn thi Lập trình hướng đối tượng</title>
-<meta name="description" content="Ngân hàng 360 câu trắc nghiệm Lập trình hướng đối tượng, có đáp án và lời giải theo slide bài giảng.">
+<meta name="description" content="360 câu trắc nghiệm Lập trình hướng đối tượng, có đáp án, lời giải và khung chạy thử code.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Serif:wght@400;600&display=swap">
@@ -15,37 +15,38 @@
   <header class="masthead">
     <span class="eyebrow">Ngân hàng đề thi · Mã môn 229034</span>
     <h1>Ôn thi Lập trình hướng đối tượng</h1>
-    <p>Toàn bộ 360 câu trắc nghiệm của sáu chương, mỗi câu kèm đáp án, lời giải bằng lời lẽ đơn giản và chỗ cần xem lại trong slide bài giảng.</p>
+    <p>360 câu của sáu chương. Câu nào cũng có đáp án, lời giải nói cho dễ hiểu và chỗ cần lật lại trong slide. Câu có code thì mở được khung chạy thử ngay tại chỗ.</p>
     <div class="facts">
       <span><b>360</b> câu hỏi</span>
       <span><b>6</b> chương</span>
-      <span>Ngôn ngữ: <b>C++, C#, Java</b></span>
-      <span>Hình thức thi: <b>trắc nghiệm trên máy</b></span>
+      <span>C++, C#, Java</span>
+      <span>Thi trắc nghiệm trên máy</span>
     </div>
   </header>
 
   <div class="layout">
-    <aside class="rail">
+    <aside class="rail" id="rail">
+      <span class="sheet-grip" aria-hidden="true"></span>
       <div>
         <p class="rail-title">Chương</p>
         <nav class="chapters" id="rail-chapters"></nav>
       </div>
       <div class="rail-actions">
-        <button class="ghost-btn" id="quiz-mode" aria-pressed="false">Luyện đề ngẫu nhiên</button>
-        <button class="ghost-btn" id="reveal-all" aria-pressed="false">Hiện sẵn đáp án</button>
-        <button class="ghost-btn" id="reset">Xóa tiến độ</button>
+        <button class="ghost-btn" id="quiz-mode" aria-pressed="false">Bốc đề ngẫu nhiên</button>
+        <button class="ghost-btn" id="reveal-all" aria-pressed="false">Lật sẵn đáp án</button>
+        <button class="ghost-btn" id="reset">Làm lại từ đầu</button>
       </div>
       <div class="progress-box" id="progress"></div>
     </aside>
 
     <div class="main">
       <div class="toolbar" id="toolbar">
-        <input class="search" id="search" type="search" placeholder="Tìm theo từ khóa: constructor, virtual, static, interface..." aria-label="Tìm câu hỏi">
+        <input class="search" id="search" type="search" placeholder="Gõ constructor, virtual, static, interface..." aria-label="Tìm câu hỏi">
         <div class="chips" id="filters">
           <button class="chip" data-filter="all" aria-pressed="true">Tất cả</button>
           <button class="chip" data-filter="todo" aria-pressed="false">Chưa làm</button>
-          <button class="chip" data-filter="wrong" aria-pressed="false">Đã làm sai</button>
-          <button class="chip" data-filter="code" aria-pressed="false">Có đoạn code</button>
+          <button class="chip" data-filter="wrong" aria-pressed="false">Làm sai</button>
+          <button class="chip" data-filter="code" aria-pressed="false">Có code</button>
         </div>
       </div>
       <div id="main"></div>
@@ -53,10 +54,20 @@
   </div>
 
   <footer class="foot">
-    <span>Nội dung câu hỏi và đáp án lấy từ bộ đề trắc nghiệm môn Lập trình hướng đối tượng, Khoa Công nghệ thông tin, Trường Cao đẳng Công Thương TP. Hồ Chí Minh.</span>
-    <span>Phần tóm tắt lý thuyết và lời giải bám theo slide bài giảng sáu chương của môn học. Tiến độ làm bài được lưu ngay trên trình duyệt của bạn.</span>
+    <span>Câu hỏi và đáp án lấy từ bộ đề trắc nghiệm môn Lập trình hướng đối tượng, Khoa Công nghệ thông tin, Trường Cao đẳng Công Thương TP. Hồ Chí Minh.</span>
+    <span>Phần tóm tắt và lời giải bám theo slide sáu chương của môn học. Tiến độ làm bài nằm luôn trong trình duyệt của bạn, không gửi đi đâu cả.</span>
   </footer>
 </div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<nav class="tabbar" id="tabbar" aria-label="Điều hướng nhanh">
+  <button id="tab-chapters" aria-pressed="false"><span class="mark">III</span>Chương</button>
+  <button id="tab-search" aria-pressed="false"><span class="mark">?</span>Tìm</button>
+  <button id="tab-quiz" aria-pressed="false"><span class="mark">∑</span>Luyện đề</button>
+  <button id="tab-reveal" aria-pressed="false"><span class="mark">✓</span>Đáp án</button>
+</nav>
+
 <script src="assets/data.js"></script>
 <script src="assets/app.js"></script>
 </body>
