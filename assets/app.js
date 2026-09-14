@@ -2,40 +2,66 @@
   var DATA = window.OOP;
   var ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI'];
   var LANG_LABEL = { cpp: 'C++', csharp: 'C#', java: 'Java' };
-  var STORE_KEY = 'oop-on-thi-v1';
   var LETTERS = 'ABCDE';
+  var ACC_KEY = 'oop-acc-v2';
+  var OLD_KEY = 'oop-on-thi-v1';
+  var GUEST = '_khach';
   var PISTON = 'https://emkc.org/api/v2/piston/execute';
   var RUNTIME = {
     cpp: { language: 'c++', file: 'main.cpp', pad: 'https://www.onlinegdb.com/online_c++_compiler' },
     java: { language: 'java', file: 'Main.java', pad: 'https://www.onlinegdb.com/online_java_compiler' },
     csharp: { language: 'csharp', file: 'Program.cs', pad: 'https://www.onlinegdb.com/online_csharp_compiler' }
   };
+  var PER_RIGHT = 10;
+  var PER_10MIN = 2;
+  var PER_GOOD_QUIZ = 25;
 
-  var state = {
-    view: 'chapter',
-    chapter: 1,
-    query: '',
-    filter: 'all',
-    revealAll: false,
-    answers: load(),
-    quiz: null,
-    runners: {}
-  };
-
-  function load() {
+  function readJson(key, fallback) {
     try {
-      var raw = localStorage.getItem(STORE_KEY);
-      return raw ? JSON.parse(raw) : {};
+      var raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
     } catch (e) {
-      return {};
+      return fallback;
     }
   }
 
-  function save() {
+  function writeJson(key, value) {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(state.answers));
+      localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {}
   }
+
+  var accounts = readJson(ACC_KEY, null) || { users: {}, current: null };
+  if (!accounts.users) accounts.users = {};
+
+  function saveAccounts() { writeJson(ACC_KEY, accounts); }
+
+  function uidOf() { return accounts.current || GUEST; }
+
+  function dataKey(uid) { return 'oop-data-' + uid; }
+
+  function blankProfile() { return { answers: {}, seconds: 0, quizzes: [] }; }
+
+  function loadProfile(uid) {
+    var p = readJson(dataKey(uid), null) || blankProfile();
+    if (!p.answers) p.answers = {};
+    if (typeof p.seconds !== 'number') p.seconds = 0;
+    if (!p.quizzes) p.quizzes = [];
+    return p;
+  }
+
+  var profile = loadProfile(uidOf());
+
+  (function migrate() {
+    var old = readJson(OLD_KEY, null);
+    if (old && Object.keys(old).length && !Object.keys(profile.answers).length) {
+      profile.answers = old;
+      saveProfile();
+      try { localStorage.removeItem(OLD_KEY); } catch (e) {}
+    }
+  })();
+
+  function saveProfile() { writeJson(dataKey(uidOf()), profile); }
 
   var allQuestions = [];
   DATA.chapters.forEach(function (ch) {
@@ -49,12 +75,48 @@
   var theoryByChapter = {};
   DATA.theory.forEach(function (t) { theoryByChapter[t.n] = t; });
 
+  var state = {
+    view: 'chapter',
+    chapter: 1,
+    query: '',
+    filter: 'all',
+    quiz: null,
+    runners: {},
+    board: null,
+    boardNote: 'Chưa nối được bảng xếp hạng chung. Đang hiện những hồ sơ trên máy này.',
+    authMsg: ''
+  };
+
   function esc(s) {
     return String(s)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
+  }
+
+  function stats(p) {
+    var done = 0, right = 0;
+    for (var id in p.answers) {
+      if (!Object.prototype.hasOwnProperty.call(p.answers, id)) continue;
+      done++;
+      var found = byId(id);
+      if (found && found.q.ans === p.answers[id]) right++;
+    }
+    var goodQuiz = p.quizzes.filter(function (r) { return r.total && r.right / r.total >= 0.8; }).length;
+    var points = right * PER_RIGHT + Math.floor(p.seconds / 600) * PER_10MIN + goodQuiz * PER_GOOD_QUIZ;
+    return {
+      done: done, right: right, total: allQuestions.length,
+      seconds: p.seconds, points: points, goodQuiz: goodQuiz
+    };
+  }
+
+  function hoursLabel(sec) {
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    if (h) return h + ' giờ ' + m + ' phút';
+    if (m) return m + ' phút';
+    return Math.floor(sec) + ' giây';
   }
 
   var KEYWORDS = ['abstract', 'base', 'bool', 'boolean', 'byte', 'case', 'catch', 'char', 'class', 'const', 'continue', 'default', 'delete', 'do', 'double', 'else', 'extends', 'final', 'finally', 'float', 'for', 'friend', 'if', 'implements', 'import', 'include', 'instanceof', 'int', 'interface', 'internal', 'is', 'long', 'main', 'namespace', 'new', 'null', 'NULL', 'operator', 'override', 'package', 'private', 'protected', 'public', 'return', 'sealed', 'short', 'static', 'string', 'String', 'struct', 'super', 'switch', 'template', 'this', 'throw', 'throws', 'try', 'typename', 'using', 'var', 'virtual', 'void', 'while'];
@@ -82,13 +144,24 @@
     return out;
   }
 
+  function numbered(code) {
+    return '<pre class="cb-lines" aria-hidden="true">' + gutterFor(code) + '</pre>' +
+      '<pre class="cb-code">' + highlight(code) + '</pre>';
+  }
+
+  function gutterFor(text) {
+    var n = text.split('\n').length;
+    var rows = [];
+    for (var i = 1; i <= n; i++) rows.push(i);
+    return rows.join('\n');
+  }
+
   function prepareCode(code, lang) {
     if (lang === 'cpp') {
       var src = code.replace(/\bvoid\s+main\s*\(/g, 'int main(').replace(/\bstrcpy_s\s*\(/g, 'strcpy(');
       var head = src.indexOf('#include') === -1
         ? '#include <iostream>\n#include <string>\n#include <cstring>\n#include <cmath>\nusing namespace std;\n\n'
         : '';
-      if (!/\bint\s+main\s*\(/.test(src)) src += '\n\nint main() { return 0; }\n';
       return head + src;
     }
     if (lang === 'csharp') {
@@ -105,26 +178,9 @@
 
   function runnerOf(q) {
     if (!state.runners[q.id]) {
-      state.runners[q.id] = { open: false, src: prepareCode(q.code, q.lang), out: '', status: '' };
+      state.runners[q.id] = { src: prepareCode(q.code, q.lang), out: '', status: '' };
     }
     return state.runners[q.id];
-  }
-
-  function stats() {
-    var done = 0, right = 0;
-    for (var id in state.answers) {
-      if (!Object.prototype.hasOwnProperty.call(state.answers, id)) continue;
-      done++;
-      var found = byId(id);
-      if (found && found.q.ans === state.answers[id]) right++;
-    }
-    return { done: done, right: right, total: allQuestions.length };
-  }
-
-  function chapterDone(ch) {
-    var done = 0;
-    ch.qs.forEach(function (q) { if (state.answers[q.id]) done++; });
-    return done;
   }
 
   var elRail = document.getElementById('rail-chapters');
@@ -132,15 +188,100 @@
   var elMain = document.getElementById('main');
   var elSearch = document.getElementById('search');
   var elFilters = document.getElementById('filters');
-  var elReveal = document.getElementById('reveal-all');
-  var elReset = document.getElementById('reset');
-  var elQuiz = document.getElementById('quiz-mode');
+  var elQuizBtn = document.getElementById('quiz-mode');
+  var elBoardBtn = document.getElementById('board-mode');
+  var elAccountBtn = document.getElementById('account-mode');
   var elToolbar = document.getElementById('toolbar');
   var elScrim = document.getElementById('scrim');
+  var elWho = document.getElementById('whoami');
   var tabChapters = document.getElementById('tab-chapters');
   var tabSearch = document.getElementById('tab-search');
   var tabQuiz = document.getElementById('tab-quiz');
-  var tabReveal = document.getElementById('tab-reveal');
+  var tabBoard = document.getElementById('tab-board');
+
+  var lastActive = Date.now();
+  ['pointerdown', 'keydown', 'wheel', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, function () { lastActive = Date.now(); }, { passive: true });
+  });
+
+  setInterval(function () {
+    if (document.visibilityState !== 'visible') return;
+    if (Date.now() - lastActive > 90000) return;
+    profile.seconds += 1;
+    if (profile.seconds % 10 === 0) {
+      saveProfile();
+      renderProgress();
+      pushBoard();
+    }
+  }, 1000);
+
+  window.addEventListener('beforeunload', saveProfile);
+
+  var dbRef = null;
+  var pushTimer = null;
+
+  if (window.claude && typeof window.claude.use === 'function') {
+    window.claude.use('db').then(function (db) {
+      if (!db) return;
+      dbRef = db;
+      watchBoard();
+      pushBoard();
+    }).catch(function () {});
+  }
+
+  function watchBoard() {
+    if (!dbRef) return;
+    try {
+      dbRef.collection('bangxephang').orderBy('points', 'desc').limit(50).onSnapshot(function (snap) {
+        state.board = snap.docs.map(function (d) {
+          var v = d.data() || {};
+          return {
+            uid: d.id,
+            name: String(v.name || 'Không tên').slice(0, 40),
+            points: Number(v.points) || 0,
+            right: Number(v.right) || 0,
+            seconds: Number(v.seconds) || 0
+          };
+        });
+        state.boardNote = '';
+        if (state.view === 'board') render();
+      }, function () {
+        state.boardNote = 'Bảng xếp hạng chung đang trục trặc. Đang hiện những hồ sơ trên máy này.';
+        if (state.view === 'board') render();
+      });
+    } catch (e) {}
+  }
+
+  function pushBoard() {
+    if (!dbRef || !accounts.current) return;
+    if (pushTimer) return;
+    pushTimer = setTimeout(function () {
+      pushTimer = null;
+      var s = stats(profile);
+      var me = accounts.users[accounts.current];
+      if (!me) return;
+      dbRef.doc('bangxephang/' + accounts.current).set({
+        name: me.name,
+        points: s.points,
+        right: s.right,
+        seconds: Math.round(s.seconds),
+        at: Date.now()
+      }).catch(function () {});
+    }, 4000);
+  }
+
+  function localBoard() {
+    var rows = [];
+    Object.keys(accounts.users).forEach(function (uid) {
+      var p = uid === uidOf() ? profile : loadProfile(uid);
+      var s = stats(p);
+      rows.push({ uid: uid, name: accounts.users[uid].name, points: s.points, right: s.right, seconds: s.seconds });
+    });
+    var g = stats(uidOf() === GUEST ? profile : loadProfile(GUEST));
+    if (g.done || g.seconds > 60) rows.push({ uid: GUEST, name: 'Khách (máy này)', points: g.points, right: g.right, seconds: g.seconds });
+    rows.sort(function (a, b) { return b.points - a.points || b.right - a.right; });
+    return rows;
+  }
 
   function sheetOpen(on) {
     document.body.dataset.sheet = on ? 'open' : '';
@@ -148,30 +289,42 @@
     tabChapters.setAttribute('aria-pressed', String(on));
   }
 
+  function chapterDone(ch) {
+    var n = 0;
+    ch.qs.forEach(function (q) { if (profile.answers[q.id]) n++; });
+    return n;
+  }
+
   function renderRail() {
     elRail.innerHTML = DATA.chapters.map(function (ch) {
-      var done = chapterDone(ch);
       return '<button class="chapter-link" data-chapter="' + ch.n + '" aria-current="' +
         (state.view === 'chapter' && state.chapter === ch.n) + '">' +
         '<span class="roman">' + ROMAN[ch.n] + '</span>' +
         '<span class="name">' + esc(ch.title) +
-        '<span class="count">' + done + '/' + ch.qs.length + ' câu</span></span>' +
+        '<span class="count">' + chapterDone(ch) + '/' + ch.qs.length + ' câu</span></span>' +
         '</button>';
     }).join('');
   }
 
   function renderProgress() {
-    var s = stats();
-    var pct = s.total ? Math.round(s.done / s.total * 100) : 0;
-    var acc = s.done ? Math.round(s.right / s.done * 100) : 0;
+    var s = stats(profile);
+    var pct = Math.round(s.done / s.total * 100);
     elProgress.innerHTML =
+      '<div class="row"><span>Điểm</span><b>' + s.points + '</b></div>' +
       '<div class="row"><span>Đã làm</span><b>' + s.done + '/' + s.total + '</b></div>' +
       '<div class="bar"><span style="width:' + pct + '%"></span></div>' +
-      '<div class="row"><span>Đúng</span><b>' + s.right + ' câu · ' + acc + '%</b></div>';
+      '<div class="row"><span>Đúng</span><b>' + s.right + ' câu</b></div>' +
+      '<div class="row"><span>Giờ ôn</span><b>' + hoursLabel(s.seconds) + '</b></div>';
+  }
+
+  function renderWho() {
+    var s = stats(profile);
+    var name = accounts.current ? accounts.users[accounts.current].name : 'Khách';
+    elWho.innerHTML = '<span class="who-name">' + esc(name) + '</span><span class="who-pts">' + s.points + ' điểm</span>';
   }
 
   function passFilter(q) {
-    var a = state.answers[q.id];
+    var a = profile.answers[q.id];
     if (state.filter === 'todo') return !a;
     if (state.filter === 'wrong') return a && a !== q.ans;
     if (state.filter === 'code') return !!q.code;
@@ -180,33 +333,33 @@
 
   function runnerHtml(q) {
     if (!q.code || !RUNTIME[q.lang]) return '';
-    var r = runnerOf(q);
-    if (!r.open) {
-      return '<div class="runner"><button class="run-toggle" data-run-toggle="' + q.id + '">Chạy thử code</button></div>';
+    if (!q.runnable) {
+      return '<div class="outbox"><span class="outbox-label">Đầu ra</span>' +
+        '<p>Đoạn này chưa có hàm main nên không chạy thẳng được, chạy lên cũng không in ra gì. ' +
+        'Nó chỉ dùng để đọc phần khai báo lớp.</p></div>';
     }
-    var out = r.out
-      ? '<pre class="run-out' + (r.status === 'err' ? ' err' : '') + '">' + esc(r.out) + '</pre>'
-      : '';
+    var r = runnerOf(q);
+    var cls = r.status === 'err' ? ' err' : r.status === 'ok' ? ' ok' : '';
+    var out = r.out ? '<pre class="run-out' + cls + '">' + esc(r.out) + '</pre>' : '';
     return '<div class="runner">' +
-      '<button class="run-toggle" data-run-toggle="' + q.id + '">Đóng khung chạy thử</button>' +
-      '<div class="run-panel">' +
-      '<p class="run-hint">Code đã được thêm phần khai báo đầu file cho biên dịch được. Sửa thoải mái rồi bấm Chạy.</p>' +
-      '<textarea class="run-src" id="src-' + q.id + '" data-run-src="' + q.id + '" spellcheck="false" aria-label="Code chạy thử">' + esc(r.src) + '</textarea>' +
-      '<div class="run-actions">' +
+      '<div class="editor">' +
+      '<div class="editor-code">' +
+      '<pre class="gutter" aria-hidden="true">' + gutterFor(r.src) + '</pre>' +
+      '<textarea class="run-src" id="src-' + q.id + '" data-run-src="' + q.id + '" spellcheck="false" wrap="off" aria-label="Code chạy thử">' + esc(r.src) + '</textarea>' +
+      '</div>' +
+      '<div class="editor-side">' +
       '<button class="run-go" data-run-go="' + q.id + '"' + (r.status === 'busy' ? ' disabled' : '') + '>' +
-      (r.status === 'busy' ? 'Đang chạy...' : 'Chạy') + '</button>' +
-      '<button class="run-link" data-run-copy="' + q.id + '">Chép code</button>' +
-      '<a class="run-link" href="' + RUNTIME[q.lang].pad + '" target="_blank" rel="noopener">Mở trình biên dịch</a>' +
-      '<button class="run-link" data-run-reset="' + q.id + '">Về code gốc</button>' +
-      '</div>' + out + '</div></div>';
+      (r.status === 'busy' ? 'Đang chạy' : 'Chạy') + '</button>' +
+      '<button class="run-mini" data-run-reset="' + q.id + '">Cài đặt lại</button>' +
+      '<button class="run-mini" data-run-copy="' + q.id + '">Chép code</button>' +
+      '<a class="run-mini" href="' + RUNTIME[q.lang].pad + '" target="_blank" rel="noopener">Trình biên dịch</a>' +
+      '</div></div>' + out + '</div>';
   }
 
   function questionCard(q, ch, showChapter) {
-    var picked = state.answers[q.id];
-    var revealed = state.revealAll || !!picked;
+    var picked = profile.answers[q.id];
     var cls = 'card';
     if (picked) cls += picked === q.ans ? ' is-right' : ' is-wrong';
-    else if (state.revealAll) cls += ' is-right';
 
     var head = '<div class="card-head">' +
       '<span class="qno">' + (showChapter ? 'Chương ' + ch.n + ' · ' : '') + 'Câu ' + q.n + '</span>' +
@@ -214,27 +367,26 @@
       (q.topic ? '<span class="topic">Slide · ' + esc(q.topic.split(' / ')[0]) + '</span>' : '') +
       '</div>';
 
-    var code = q.code ? '<pre><code>' + highlight(q.code) + '</code></pre>' : '';
+    var code = q.code ? '<div class="codeblock">' + numbered(q.code) + '</div>' : '';
 
     var opts = q.opts.map(function (text, i) {
       var letter = LETTERS[i];
       var c = 'option';
-      if (revealed && letter === q.ans) c += ' correct';
+      if (picked && letter === q.ans) c += ' correct';
       if (picked === letter && letter !== q.ans) c += ' chosen-wrong';
       return '<button class="' + c + '" data-pick="' + letter + '" data-qid="' + q.id + '"' +
-        (revealed ? ' disabled' : '') + '>' +
+        (picked ? ' disabled' : '') + '>' +
         '<span class="letter">' + letter + '</span>' +
         '<span>' + esc(text) + '</span></button>';
     }).join('');
 
-    var verdict = '';
-    if (picked) {
-      verdict = '<div class="verdict ' + (picked === q.ans ? 'right' : 'wrong') + '">' +
-        (picked === q.ans ? 'Đúng rồi' : 'Chưa đúng. Đáp án là ' + q.ans) +
-        '<button class="icon-btn" data-retry="' + q.id + '">Thử lại</button></div>';
-    }
+    var verdict = picked
+      ? '<div class="verdict ' + (picked === q.ans ? 'right' : 'wrong') + '">' +
+        (picked === q.ans ? 'Đúng rồi, +' + PER_RIGHT + ' điểm' : 'Chưa đúng. Đáp án là ' + q.ans) +
+        '<button class="icon-btn" data-retry="' + q.id + '">Thử lại</button></div>'
+      : '';
 
-    var why = revealed ? '<div class="why"><span class="label">Vì sao chọn ' + q.ans + '</span>' +
+    var why = picked ? '<div class="why"><span class="label">Vì sao chọn ' + q.ans + '</span>' +
       '<p>' + esc(q.exp) + '</p>' +
       (q.note ? '<p class="note">' + esc(q.note) + '</p>' : '') + '</div>' : '';
 
@@ -258,7 +410,7 @@
             return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>';
           }).join('') + '</tbody></table></div>';
       }
-      if (s.code) parts += '<pre><code>' + highlight(s.code) + '</code></pre>';
+      if (s.code) parts += '<div class="codeblock">' + numbered(s.code) + '</div>';
       if (s.body2) parts += s.body2.map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
       return '<section>' + parts + '</section>';
     }).join('');
@@ -276,9 +428,7 @@
       return hay.indexOf(needle) !== -1 && passFilter(q);
     });
     var head = '<p class="count-line">' + hits.length + ' câu có chữ “' + esc(state.query) + '”</p>';
-    if (!hits.length) {
-      return head + '<div class="empty">Không có câu nào chứa từ này. Thử gõ ngắn lại xem sao.</div>';
-    }
+    if (!hits.length) return head + '<div class="empty">Không có câu nào chứa từ này. Thử gõ ngắn lại xem sao.</div>';
     var cards = hits.slice(0, 60).map(function (item) { return questionCard(item.q, item.ch, true); }).join('');
     var more = hits.length > 60 ? '<div class="empty">Mới hiện 60 câu đầu. Gõ thêm cho hẹp bớt.</div>' : '';
     return head + '<div class="cards">' + cards + '</div>' + more;
@@ -295,30 +445,52 @@
       cards;
   }
 
+  function poolSize(scope) {
+    if (!scope) return allQuestions.length;
+    var ch = DATA.chapters.filter(function (c) { return c.n === scope; })[0];
+    return ch ? ch.qs.length : 0;
+  }
+
+  function countChoices(scope) {
+    var size = poolSize(scope);
+    var cap = scope ? size : 90;
+    var steps = [10, 20, 30, 40, 50, 60, 90];
+    var out = steps.filter(function (n) { return n <= Math.min(cap, size); });
+    if (!out.length || out[out.length - 1] < Math.min(cap, size)) out.push(Math.min(cap, size));
+    return out;
+  }
+
+  function countOptionsHtml(scope, selected) {
+    var list = countChoices(scope);
+    var pick = list.indexOf(selected) !== -1 ? selected : list[Math.min(1, list.length - 1)];
+    return list.map(function (n) {
+      return '<option value="' + n + '"' + (n === pick ? ' selected' : '') + '>' + n + ' câu</option>';
+    }).join('');
+  }
+
   function renderQuizSetup() {
-    var opts = '<option value="0">Cả sáu chương</option>' + DATA.chapters.map(function (ch) {
-      return '<option value="' + ch.n + '">Chương ' + ROMAN[ch.n] + ' · ' + esc(ch.title) + '</option>';
+    var scopeOpts = '<option value="0">Cả sáu chương (tối đa 90 câu)</option>' + DATA.chapters.map(function (ch) {
+      return '<option value="' + ch.n + '">Chương ' + ROMAN[ch.n] + ' · ' + esc(ch.title) + ' (' + ch.qs.length + ' câu)</option>';
     }).join('');
     return '<div class="quiz-setup">' +
       '<h2>Bốc đề ngẫu nhiên</h2>' +
-      '<p class="count-line">Chọn phạm vi với số câu, trang sẽ bốc ngẫu nhiên rồi chấm điểm lúc bạn làm xong. Mấy câu này vẫn tính vào tiến độ chung.</p>' +
+      '<p class="count-line">Số câu tối đa bằng số câu có trong phạm vi bạn chọn. Cả sáu chương thì trần là 90 câu.</p>' +
       '<label class="field" for="quiz-scope"><span>Phạm vi</span>' +
-      '<select id="quiz-scope">' + opts + '</select></label>' +
+      '<select id="quiz-scope">' + scopeOpts + '</select></label>' +
       '<label class="field" for="quiz-count"><span>Số câu</span>' +
-      '<select id="quiz-count"><option>10</option><option selected>20</option><option>30</option><option>40</option></select></label>' +
+      '<select id="quiz-count">' + countOptionsHtml(0, 20) + '</select></label>' +
       '<button class="solid-btn" id="quiz-start">Bắt đầu</button></div>';
   }
 
   function renderQuizRun() {
     var qz = state.quiz;
     var item = qz.items[qz.index];
-    var answered = qz.picks[item.q.id];
     return '<div class="quiz-run">' +
       '<div class="quiz-bar"><span>Câu ' + (qz.index + 1) + ' / ' + qz.items.length + '</span>' +
       '<span>Đúng ' + qz.right + '</span>' +
       '<button class="icon-btn" id="quiz-quit">Dừng, xem điểm</button></div>' +
       questionCard(item.q, item.ch, true) +
-      (answered ? '<button class="solid-btn" id="quiz-next">' +
+      (qz.picks[item.q.id] ? '<button class="solid-btn" id="quiz-next">' +
         (qz.index + 1 === qz.items.length ? 'Xem điểm' : 'Câu tiếp') + '</button>' : '') +
       '</div>';
   }
@@ -336,30 +508,122 @@
           return '<a href="#" data-goto="' + item.q.id + '">Chương ' + item.ch.n + ' · Câu ' + item.q.n + ' — ' + esc(item.q.stem.slice(0, 80)) + '</a>';
         }).join('') + '</div>'
       : '<p class="count-line">Không sai câu nào.</p>';
+    var bonus = pct >= 80 ? '<p class="count-line">Đạt từ 80% trở lên, cộng thêm ' + PER_GOOD_QUIZ + ' điểm.</p>' : '';
     return '<div class="quiz-done"><h2>Xong rồi</h2>' +
-      '<p class="score">' + qz.right + '/' + total + ' · ' + pct + '%</p>' +
+      '<p class="score">' + qz.right + '/' + total + ' · ' + pct + '%</p>' + bonus +
       '<span class="count-line">Mấy câu nên xem lại</span>' + list +
       '<button class="solid-btn" id="quiz-again">Bốc đề khác</button></div>';
+  }
+
+  function renderBoard() {
+    var rows = state.board && state.board.length ? state.board : localBoard();
+    var note = state.board && state.board.length ? '' :
+      '<p class="count-line">' + esc(state.boardNote) + '</p>';
+    var me = accounts.current;
+    var body = rows.length
+      ? rows.map(function (r, i) {
+          return '<tr' + (r.uid === me ? ' class="me"' : '') + '>' +
+            '<td class="rank">' + (i + 1) + '</td>' +
+            '<td>' + esc(r.name) + '</td>' +
+            '<td class="num">' + r.points + '</td>' +
+            '<td class="num">' + r.right + '</td>' +
+            '<td class="num">' + hoursLabel(r.seconds) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="5">Chưa có ai trong bảng.</td></tr>';
+    return '<div class="panel"><h2>Bảng xếp hạng</h2>' + note +
+      '<div class="table-wrap"><table class="board"><thead><tr>' +
+      '<th>#</th><th>Tên</th><th class="num">Điểm</th><th class="num">Câu đúng</th><th class="num">Giờ ôn</th>' +
+      '</tr></thead><tbody>' + body + '</tbody></table></div>' +
+      '<p class="count-line">Xếp theo điểm, bằng điểm thì ai đúng nhiều câu hơn đứng trên. ' +
+      'Ai mở được trang cũng ghi được vào bảng, nên cứ xem cho vui, đừng coi là kết quả chính thức.</p>' +
+      '</div>';
+  }
+
+  function renderAccount() {
+    var s = stats(profile);
+    var rules = '<div class="rules"><span class="label">Cách tính điểm</span><ul>' +
+      '<li>Mỗi câu trả lời đúng: ' + PER_RIGHT + ' điểm</li>' +
+      '<li>Mỗi 10 phút ngồi ôn: ' + PER_10MIN + ' điểm</li>' +
+      '<li>Mỗi đề đạt từ 80% trở lên: ' + PER_GOOD_QUIZ + ' điểm</li>' +
+      '</ul></div>';
+    var cards = '<div class="stat-grid">' +
+      '<div class="stat"><span>Điểm</span><b>' + s.points + '</b></div>' +
+      '<div class="stat"><span>Câu đúng</span><b>' + s.right + '</b></div>' +
+      '<div class="stat"><span>Giờ ôn</span><b>' + hoursLabel(s.seconds) + '</b></div>' +
+      '<div class="stat"><span>Độ chính xác</span><b>' + (s.done ? Math.round(s.right / s.done * 100) : 0) + '%</b></div>' +
+      '</div>';
+
+    if (accounts.current) {
+      var u = accounts.users[accounts.current];
+      return '<div class="panel"><h2>' + esc(u.name) + '</h2>' + cards + rules +
+        '<div class="run-actions">' +
+        '<button class="solid-btn" id="sign-out">Đăng xuất</button>' +
+        '<button class="run-mini" id="wipe">Xóa hồ sơ này</button>' +
+        '</div></div>';
+    }
+
+    var others = Object.keys(accounts.users);
+    var list = others.length
+      ? '<div class="who-list"><span class="label">Hồ sơ trên máy này</span>' +
+        others.map(function (uid) {
+          return '<button class="ghost-btn" data-pick-user="' + uid + '">' + esc(accounts.users[uid].name) + '</button>';
+        }).join('') + '</div>'
+      : '';
+
+    return '<div class="panel"><h2>Đang dùng chế độ khách</h2>' + cards +
+      '<p class="count-line">Đăng nhập để giữ điểm riêng và có tên trong bảng xếp hạng. ' +
+      'Mã PIN chỉ để tách hồ sơ khi dùng chung máy, đừng đặt trùng mật khẩu thật.</p>' +
+      (state.authMsg ? '<p class="warn">' + esc(state.authMsg) + '</p>' : '') +
+      '<label class="field" for="acc-name"><span>Tên hiển thị</span>' +
+      '<input class="search" id="acc-name" maxlength="24" placeholder="Nguyễn Văn A"></label>' +
+      '<label class="field" for="acc-pin"><span>Mã PIN 4 số</span>' +
+      '<input class="search" id="acc-pin" inputmode="numeric" maxlength="6" placeholder="0000"></label>' +
+      '<div class="run-actions">' +
+      '<button class="solid-btn" id="sign-in">Đăng nhập</button>' +
+      '<button class="run-mini" id="sign-up">Tạo tài khoản mới</button>' +
+      '</div>' + list + rules + '</div>';
   }
 
   function render() {
     renderRail();
     renderProgress();
-    elReveal.setAttribute('aria-pressed', String(state.revealAll));
-    tabReveal.setAttribute('aria-pressed', String(state.revealAll));
-    var inQuiz = state.view !== 'chapter';
-    elQuiz.setAttribute('aria-pressed', String(inQuiz));
-    tabQuiz.setAttribute('aria-pressed', String(inQuiz));
+    renderWho();
+    elQuizBtn.setAttribute('aria-pressed', String(state.view.indexOf('quiz') === 0));
+    tabQuiz.setAttribute('aria-pressed', String(state.view.indexOf('quiz') === 0));
+    elBoardBtn.setAttribute('aria-pressed', String(state.view === 'board'));
+    tabBoard.setAttribute('aria-pressed', String(state.view === 'board'));
+    elAccountBtn.setAttribute('aria-pressed', String(state.view === 'account'));
     Array.prototype.forEach.call(elFilters.querySelectorAll('.chip'), function (chip) {
       chip.setAttribute('aria-pressed', String(chip.dataset.filter === state.filter));
     });
-    elToolbar.hidden = state.view === 'quiz-run' || state.view === 'quiz-done';
+    elToolbar.hidden = state.view !== 'chapter';
 
     if (state.view === 'quiz-setup') elMain.innerHTML = renderQuizSetup();
     else if (state.view === 'quiz-run') elMain.innerHTML = renderQuizRun();
     else if (state.view === 'quiz-done') elMain.innerHTML = renderQuizDone();
+    else if (state.view === 'board') elMain.innerHTML = renderBoard();
+    else if (state.view === 'account') elMain.innerHTML = renderAccount();
     else if (state.query.trim().length >= 2) elMain.innerHTML = renderSearch();
     else elMain.innerHTML = renderChapter();
+
+    bindEditors();
+  }
+
+  function bindEditors() {
+    Array.prototype.forEach.call(elMain.querySelectorAll('.run-src'), function (ta) {
+      var gut = ta.parentNode.querySelector('.gutter');
+      ta.addEventListener('scroll', function () {
+        gut.scrollTop = ta.scrollTop;
+      });
+    });
+  }
+
+  function goto(view) {
+    state.view = view;
+    state.quiz = null;
+    sheetOpen(false);
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   function copyText(text) {
@@ -398,29 +662,27 @@
     var r = runnerOf(q);
     var rt = RUNTIME[q.lang];
     r.status = 'busy';
-    r.out = 'Đang gửi code tới máy chủ biên dịch...';
+    r.out = 'Đang gửi code đi biên dịch...';
     render();
-
-    var payload = {
-      language: rt.language,
-      version: '*',
-      files: [{ name: fileNameFor(r.src, q.lang), content: r.src }],
-      stdin: '',
-      compile_timeout: 10000,
-      run_timeout: 5000
-    };
 
     var done = false;
     var timer = setTimeout(function () {
       if (done) return;
       done = true;
-      fallback(r, q, 'Máy chủ biên dịch không trả lời kịp.');
+      fallback(r, 'máy chủ không trả lời kịp');
     }, 25000);
 
     fetch(PISTON, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        language: rt.language,
+        version: '*',
+        files: [{ name: fileNameFor(r.src, q.lang), content: r.src }],
+        stdin: '',
+        compile_timeout: 10000,
+        run_timeout: 5000
+      })
     }).then(function (res) {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
@@ -430,30 +692,40 @@
       clearTimeout(timer);
       var compile = data.compile || {};
       var run = data.run || {};
-      var text = '';
       if (compile.stderr && compile.stderr.trim()) {
-        text = 'Lỗi biên dịch:\n' + compile.stderr;
+        r.out = 'Lỗi biên dịch:\n' + compile.stderr;
         r.status = 'err';
       } else {
-        text = (run.stdout || '') + (run.stderr || '');
-        if (!text.trim()) text = '(chương trình chạy xong, không in ra gì)';
+        var text = (run.stdout || '') + (run.stderr || '');
+        if (!text.trim()) text = '(chạy xong, không in ra gì)';
         r.status = run.stderr && run.stderr.trim() ? 'err' : 'ok';
+        r.out = text;
       }
-      r.out = trimOut(text);
+      r.out = trimOut(r.out);
       render();
     }).catch(function (err) {
       if (done) return;
       done = true;
       clearTimeout(timer);
-      fallback(r, q, String(err && err.message ? err.message : err));
+      fallback(r, String(err && err.message ? err.message : err));
     });
   }
 
-  function fallback(r, q, reason) {
+  function fallback(r, reason) {
     copyText(r.src);
     r.status = 'err';
     r.out = 'Trang này không gọi thẳng được máy chủ biên dịch (' + reason + ').\n' +
-      'Code đã chép sẵn vào bộ nhớ tạm. Bấm "Mở trình biên dịch", dán vào rồi chạy.';
+      'Code đã chép sẵn vào bộ nhớ tạm. Bấm "Trình biên dịch", dán vào rồi chạy.';
+    render();
+  }
+
+  function switchUser(uid) {
+    saveProfile();
+    accounts.current = uid === GUEST ? null : uid;
+    saveAccounts();
+    profile = loadProfile(uidOf());
+    state.authMsg = '';
+    state.runners = {};
     render();
   }
 
@@ -461,11 +733,7 @@
     var btn = e.target.closest('[data-chapter]');
     if (!btn) return;
     state.chapter = Number(btn.dataset.chapter);
-    state.view = 'chapter';
-    state.quiz = null;
-    sheetOpen(false);
-    render();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    goto('chapter');
   });
 
   elSearch.addEventListener('input', function () {
@@ -481,31 +749,16 @@
     render();
   });
 
-  function toggleReveal() {
-    state.revealAll = !state.revealAll;
-    render();
-  }
+  function toggleQuiz() { goto(state.view.indexOf('quiz') === 0 ? 'chapter' : 'quiz-setup'); }
+  function toggleBoard() { goto(state.view === 'board' ? 'chapter' : 'board'); }
+  function toggleAccount() { goto(state.view === 'account' ? 'chapter' : 'account'); }
 
-  function toggleQuiz() {
-    state.view = state.view === 'chapter' ? 'quiz-setup' : 'chapter';
-    state.quiz = null;
-    sheetOpen(false);
-    render();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  elReveal.addEventListener('click', toggleReveal);
-  tabReveal.addEventListener('click', toggleReveal);
-  elQuiz.addEventListener('click', toggleQuiz);
+  elQuizBtn.addEventListener('click', toggleQuiz);
   tabQuiz.addEventListener('click', toggleQuiz);
-
-  elReset.addEventListener('click', function () {
-    if (!window.confirm('Xóa hết tiến độ đã lưu trên máy này?')) return;
-    state.answers = {};
-    save();
-    sheetOpen(false);
-    render();
-  });
+  elBoardBtn.addEventListener('click', toggleBoard);
+  tabBoard.addEventListener('click', toggleBoard);
+  elAccountBtn.addEventListener('click', toggleAccount);
+  elWho.addEventListener('click', toggleAccount);
 
   tabChapters.addEventListener('click', function () {
     sheetOpen(document.body.dataset.sheet !== 'open');
@@ -530,27 +783,29 @@
 
   elMain.addEventListener('input', function (e) {
     var box = e.target.closest('[data-run-src]');
-    if (!box) return;
-    var item = byId(box.dataset.runSrc);
-    if (item) runnerOf(item.q).src = box.value;
+    if (box) {
+      var item = byId(box.dataset.runSrc);
+      if (item) {
+        runnerOf(item.q).src = box.value;
+        var gut = box.parentNode.querySelector('.gutter');
+        if (gut) gut.textContent = gutterFor(box.value);
+      }
+    }
+  });
+
+  elMain.addEventListener('change', function (e) {
+    if (e.target.id !== 'quiz-scope') return;
+    var countSel = document.getElementById('quiz-count');
+    if (countSel) countSel.innerHTML = countOptionsHtml(Number(e.target.value), Number(countSel.value));
   });
 
   elMain.addEventListener('click', function (e) {
-    var toggle = e.target.closest('[data-run-toggle]');
-    if (toggle) {
-      var rt = runnerOf(byId(toggle.dataset.runToggle).q);
-      rt.open = !rt.open;
-      render();
-      return;
-    }
-
     var go = e.target.closest('[data-run-go]');
     if (go) { runCode(go.dataset.runGo); return; }
 
     var cp = e.target.closest('[data-run-copy]');
     if (cp) {
-      var rc = runnerOf(byId(cp.dataset.runCopy).q);
-      copyText(rc.src);
+      copyText(runnerOf(byId(cp.dataset.runCopy).q).src);
       cp.textContent = 'Đã chép';
       setTimeout(function () { cp.textContent = 'Chép code'; }, 1600);
       return;
@@ -570,9 +825,10 @@
     var pick = e.target.closest('[data-pick]');
     if (pick) {
       var qid = pick.dataset.qid;
-      if (state.answers[qid]) return;
-      state.answers[qid] = pick.dataset.pick;
-      save();
+      if (profile.answers[qid]) return;
+      profile.answers[qid] = pick.dataset.pick;
+      saveProfile();
+      pushBoard();
       if (state.quiz && state.view === 'quiz-run') {
         var current = state.quiz.items[state.quiz.index];
         if (!state.quiz.picks[qid]) {
@@ -589,16 +845,16 @@
 
     var retry = e.target.closest('[data-retry]');
     if (retry) {
-      delete state.answers[retry.dataset.retry];
-      save();
+      delete profile.answers[retry.dataset.retry];
+      saveProfile();
       render();
       return;
     }
 
-    var goto = e.target.closest('[data-goto]');
-    if (goto) {
+    var jump = e.target.closest('[data-goto]');
+    if (jump) {
       e.preventDefault();
-      var target = byId(goto.dataset.goto);
+      var target = byId(jump.dataset.goto);
       state.view = 'chapter';
       state.chapter = target.ch.n;
       state.filter = 'all';
@@ -611,6 +867,49 @@
       return;
     }
 
+    var pickUser = e.target.closest('[data-pick-user]');
+    if (pickUser) { switchUser(pickUser.dataset.pickUser); return; }
+
+    if (e.target.id === 'sign-out') { switchUser(GUEST); return; }
+
+    if (e.target.id === 'wipe') {
+      if (!window.confirm('Xóa hồ sơ này khỏi máy? Điểm và tiến độ mất hết.')) return;
+      var gone = accounts.current;
+      try { localStorage.removeItem(dataKey(gone)); } catch (err) {}
+      delete accounts.users[gone];
+      accounts.current = null;
+      saveAccounts();
+      profile = loadProfile(GUEST);
+      render();
+      return;
+    }
+
+    if (e.target.id === 'sign-in' || e.target.id === 'sign-up') {
+      var name = (document.getElementById('acc-name').value || '').trim();
+      var pin = (document.getElementById('acc-pin').value || '').trim();
+      if (name.length < 2) { state.authMsg = 'Tên cần ít nhất 2 ký tự.'; render(); return; }
+      if (!/^\d{4,6}$/.test(pin)) { state.authMsg = 'Mã PIN gồm 4 tới 6 chữ số.'; render(); return; }
+
+      var found = null;
+      Object.keys(accounts.users).forEach(function (uid) {
+        if (accounts.users[uid].name.toLowerCase() === name.toLowerCase()) found = uid;
+      });
+
+      if (e.target.id === 'sign-in') {
+        if (!found) { state.authMsg = 'Máy này chưa có tên đó. Bấm Tạo tài khoản mới.'; render(); return; }
+        if (accounts.users[found].pin !== pin) { state.authMsg = 'Mã PIN chưa khớp.'; render(); return; }
+        switchUser(found);
+        return;
+      }
+
+      if (found) { state.authMsg = 'Tên này đã có trên máy. Đăng nhập hoặc đổi tên khác.'; render(); return; }
+      var uid = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+      accounts.users[uid] = { name: name, pin: pin, created: Date.now() };
+      saveAccounts();
+      switchUser(uid);
+      return;
+    }
+
     if (e.target.id === 'quiz-start') {
       var scope = Number(document.getElementById('quiz-scope').value);
       var count = Number(document.getElementById('quiz-count').value);
@@ -620,8 +919,8 @@
         var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
       }
       var items = pool.slice(0, Math.min(count, pool.length));
-      items.forEach(function (it) { delete state.answers[it.q.id]; });
-      save();
+      items.forEach(function (it) { delete profile.answers[it.q.id]; });
+      saveProfile();
       state.quiz = { items: items, index: 0, right: 0, picks: {}, answeredCount: 0 };
       state.view = 'quiz-run';
       render();
@@ -630,25 +929,27 @@
     }
 
     if (e.target.id === 'quiz-next') {
-      if (state.quiz.index + 1 >= state.quiz.items.length) state.view = 'quiz-done';
-      else state.quiz.index++;
-      render();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (state.quiz.index + 1 >= state.quiz.items.length) finishQuiz();
+      else { state.quiz.index++; render(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
       return;
     }
 
-    if (e.target.id === 'quiz-quit') {
-      state.view = 'quiz-done';
-      render();
-      return;
-    }
+    if (e.target.id === 'quiz-quit') { finishQuiz(); return; }
 
-    if (e.target.id === 'quiz-again') {
-      state.view = 'quiz-setup';
-      state.quiz = null;
-      render();
-    }
+    if (e.target.id === 'quiz-again') { goto('quiz-setup'); }
   });
+
+  function finishQuiz() {
+    var qz = state.quiz;
+    var total = qz.answeredCount || qz.items.length;
+    profile.quizzes.push({ at: Date.now(), right: qz.right, total: total });
+    if (profile.quizzes.length > 60) profile.quizzes = profile.quizzes.slice(-60);
+    saveProfile();
+    pushBoard();
+    state.view = 'quiz-done';
+    render();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 
   render();
 })();
