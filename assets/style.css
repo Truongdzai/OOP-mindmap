@@ -121,6 +121,40 @@ a { color: var(--accent); }
   color: var(--accent);
 }
 
+.only-wide { display: inline; }
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+
+.segmented button {
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 9px 8px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.segmented button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+
+.segmented button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.auth-form { display: grid; gap: 13px; }
+.auth-form .solid-btn { justify-self: stretch; text-align: center; }
+
 .masthead h1 {
   margin: 0;
   font-size: clamp(26px, 4.4vw, 40px);
@@ -842,9 +876,11 @@ table.board tr.me td { color: var(--accent); font-weight: 500; }
 @media (max-width: 880px) {
   .shell { padding-block: 0 100px; }
 
-  .masthead { padding-block: 22px 18px; gap: 12px; }
-  .masthead p { font-size: 14px; }
-  .facts { gap: 6px 18px; font-size: 12.5px; }
+  .masthead { padding-block: 14px 12px; gap: 8px; }
+  .masthead h1 { font-size: 22px; letter-spacing: -.015em; }
+  .eyebrow { font-size: 10px; letter-spacing: .1em; }
+  .only-wide { display: none; }
+  .facts { display: none; }
 
   .layout { grid-template-columns: minmax(0, 1fr); gap: 0; padding-top: 14px; }
 
@@ -956,9 +992,9 @@ table.board tr.me td { color: var(--accent); font-weight: 500; }
 
 @media (max-width: 520px) {
   .shell { padding-inline: 14px; }
-  .masthead h1 { font-size: 25px; }
+  .masthead h1 { font-size: 21px; }
   .card { padding: 15px 13px; }
-  .run-panel { padding: 10px; }
+  .panel { padding: 16px 13px; }
   .quiz-setup, .quiz-run, .quiz-done { padding: 16px 14px; }
 }
 

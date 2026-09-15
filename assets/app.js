@@ -31,6 +31,57 @@
 
   function saveAccounts() { writeJson(ACC_KEY, accounts); }
 
+  function normName(name) {
+    return String(name || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, ' ');
+  }
+
+  function slugName(name) {
+    return normName(name).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  }
+
+  function weakHash(text) {
+    var h = 2166136261;
+    for (var i = 0; i < text.length; i++) {
+      h ^= text.charCodeAt(i);
+      h = (h * 16777619) >>> 0;
+    }
+    return 'weak:' + h.toString(16);
+  }
+
+  function hashPin(name, pin) {
+    var payload = 'oop-on-thi|' + normName(name) + '|' + pin;
+    if (window.crypto && crypto.subtle && crypto.subtle.digest && window.TextEncoder) {
+      try {
+        return crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload))
+          .then(function (buf) {
+            return Array.prototype.map.call(new Uint8Array(buf), function (b) {
+              return ('0' + b.toString(16)).slice(-2);
+            }).join('');
+          })
+          .catch(function () { return weakHash(payload); });
+      } catch (e) {
+        return Promise.resolve(weakHash(payload));
+      }
+    }
+    return Promise.resolve(weakHash(payload));
+  }
+
+  function findLocalUser(name) {
+    var key = normName(name);
+    var hit = null;
+    Object.keys(accounts.users).forEach(function (uid) {
+      if (normName(accounts.users[uid].name) === key) hit = uid;
+    });
+    return hit;
+  }
+
   function uidOf() { return accounts.current || GUEST; }
 
   function dataKey(uid) { return 'oop-data-' + uid; }
@@ -72,6 +123,7 @@
 
   var state = {
     view: 'chapter',
+    authMode: 'in',
     chapter: 1,
     query: '',
     filter: 'all',
@@ -179,6 +231,7 @@
       saveProfile();
       renderProgress();
       pushBoard();
+      pushProfile();
     }
   }, 1000);
 
@@ -286,8 +339,13 @@
 
   function renderWho() {
     var s = stats(profile);
-    var name = accounts.current ? accounts.users[accounts.current].name : 'Khách';
-    elWho.innerHTML = '<span class="who-name">' + esc(name) + '</span><span class="who-pts">' + s.points + ' điểm</span>';
+    if (accounts.current) {
+      elWho.innerHTML = '<span class="who-name">' + esc(accounts.users[accounts.current].name) + '</span>' +
+        '<span class="who-pts">' + s.points + ' điểm</span>';
+    } else {
+      elWho.innerHTML = '<span class="who-name">Đăng nhập</span>' +
+        '<span class="who-pts">' + s.points + ' điểm</span>';
+    }
   }
 
   function passFilter(q) {
@@ -527,48 +585,60 @@
   }
 
   function renderAccount() {
-    var s = stats(profile);
+    var syncNote = dbRef
+      ? 'Tài khoản đồng bộ qua máy chủ, đăng nhập ở máy khác vẫn thấy đủ điểm và bài đã làm.'
+      : 'Bản này không có máy chủ nên tài khoản chỉ nằm trên máy đang dùng, máy khác không đăng nhập được.';
+
     var rules = '<div class="rules"><span class="label">Cách tính điểm</span><ul>' +
       '<li>Mỗi câu trả lời đúng: ' + PER_RIGHT + ' điểm</li>' +
       '<li>Mỗi 10 phút ngồi ôn: ' + PER_10MIN + ' điểm</li>' +
       '<li>Mỗi đề đạt từ 80% trở lên: ' + PER_GOOD_QUIZ + ' điểm</li>' +
       '</ul></div>';
-    var cards = '<div class="stat-grid">' +
-      '<div class="stat"><span>Điểm</span><b>' + s.points + '</b></div>' +
-      '<div class="stat"><span>Câu đúng</span><b>' + s.right + '</b></div>' +
-      '<div class="stat"><span>Giờ ôn</span><b>' + hoursLabel(s.seconds) + '</b></div>' +
-      '<div class="stat"><span>Độ chính xác</span><b>' + (s.done ? Math.round(s.right / s.done * 100) : 0) + '%</b></div>' +
-      '</div>';
 
     if (accounts.current) {
+      var s = stats(profile);
       var u = accounts.users[accounts.current];
-      return '<div class="panel"><h2>' + esc(u.name) + '</h2>' + cards + rules +
+      return '<div class="panel"><h2>' + esc(u.name) + '</h2>' +
+        '<div class="stat-grid">' +
+        '<div class="stat"><span>Điểm</span><b>' + s.points + '</b></div>' +
+        '<div class="stat"><span>Câu đúng</span><b>' + s.right + '</b></div>' +
+        '<div class="stat"><span>Giờ ôn</span><b>' + hoursLabel(s.seconds) + '</b></div>' +
+        '<div class="stat"><span>Độ chính xác</span><b>' + (s.done ? Math.round(s.right / s.done * 100) : 0) + '%</b></div>' +
+        '</div>' +
+        '<p class="count-line">' + esc(syncNote) + '</p>' + rules +
         '<div class="btn-row">' +
         '<button class="solid-btn" id="sign-out">Đăng xuất</button>' +
         '<button class="link-btn" id="wipe">Xóa hồ sơ này</button>' +
         '</div></div>';
     }
 
+    var up = state.authMode === 'up';
     var others = Object.keys(accounts.users);
     var list = others.length
-      ? '<div class="who-list"><span class="label">Hồ sơ trên máy này</span>' +
+      ? '<div class="who-list"><span class="label">Hồ sơ đã có trên máy này</span>' +
         others.map(function (uid) {
           return '<button class="ghost-btn" data-pick-user="' + uid + '">' + esc(accounts.users[uid].name) + '</button>';
         }).join('') + '</div>'
       : '';
 
-    return '<div class="panel"><h2>Đang dùng chế độ khách</h2>' + cards +
-      '<p class="count-line">Đăng nhập để giữ điểm riêng và có tên trong bảng xếp hạng. ' +
-      'Mã PIN chỉ để tách hồ sơ khi dùng chung máy, đừng đặt trùng mật khẩu thật.</p>' +
+    return '<div class="panel"><h2>' + (up ? 'Tạo tài khoản' : 'Đăng nhập') + '</h2>' +
+      '<div class="segmented" role="tablist">' +
+      '<button role="tab" data-auth-mode="in" aria-selected="' + (!up) + '">Đăng nhập</button>' +
+      '<button role="tab" data-auth-mode="up" aria-selected="' + up + '">Tạo tài khoản</button>' +
+      '</div>' +
       (state.authMsg ? '<p class="warn">' + esc(state.authMsg) + '</p>' : '') +
+      '<form class="auth-form" id="auth-form" autocomplete="off">' +
       '<label class="field" for="acc-name"><span>Tên hiển thị</span>' +
-      '<input class="search" id="acc-name" maxlength="24" placeholder="Nguyễn Văn A"></label>' +
-      '<label class="field" for="acc-pin"><span>Mã PIN 4 số</span>' +
-      '<input class="search" id="acc-pin" inputmode="numeric" maxlength="6" placeholder="0000"></label>' +
-      '<div class="btn-row">' +
-      '<button class="solid-btn" id="sign-in">Đăng nhập</button>' +
-      '<button class="link-btn" id="sign-up">Tạo tài khoản mới</button>' +
-      '</div>' + list + rules + '</div>';
+      '<input class="search" id="acc-name" type="text" maxlength="24" autocomplete="username" placeholder="Nguyễn Văn A" value="' + esc(state.authName || '') + '"></label>' +
+      '<label class="field" for="acc-pin"><span>Mã PIN 4 tới 6 chữ số</span>' +
+      '<input class="search" id="acc-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="' + (up ? 'new-password' : 'current-password') + '" placeholder="••••"></label>' +
+      (up ? '<label class="field" for="acc-pin2"><span>Nhập lại mã PIN</span>' +
+        '<input class="search" id="acc-pin2" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" placeholder="••••"></label>' : '') +
+      '<button class="solid-btn" type="submit">' + (up ? 'Tạo tài khoản' : 'Đăng nhập') + '</button>' +
+      '</form>' +
+      '<p class="count-line">Không đăng nhập vẫn ôn được bình thường, chỉ là điểm không có tên trong bảng xếp hạng. ' +
+      'Mã PIN chỉ để tách hồ sơ khi dùng chung máy, đừng đặt trùng mật khẩu thật. ' + esc(syncNote) + '</p>' +
+      list + '</div>';
   }
 
   function render() {
@@ -602,12 +672,149 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
+  function pullProfile(uid) {
+    if (!dbRef) return Promise.resolve(null);
+    return dbRef.doc('tiendo/' + uid).get().then(function (snap) {
+      if (!snap.exists) return null;
+      var v = snap.data() || {};
+      return {
+        answers: v.answers && typeof v.answers === 'object' ? v.answers : {},
+        seconds: Number(v.seconds) || 0,
+        quizzes: Array.isArray(v.quizzes) ? v.quizzes : []
+      };
+    }).catch(function () { return null; });
+  }
+
+  var syncTimer = null;
+
+  function pushProfile() {
+    if (!dbRef || !accounts.current) return;
+    if (syncTimer) return;
+    syncTimer = setTimeout(function () {
+      syncTimer = null;
+      dbRef.doc('tiendo/' + accounts.current).set({
+        answers: profile.answers,
+        seconds: Math.round(profile.seconds),
+        quizzes: profile.quizzes.slice(-30),
+        at: Date.now()
+      }).catch(function () {});
+    }, 6000);
+  }
+
+  function authFail(msg) {
+    state.authMsg = msg;
+    render();
+    return false;
+  }
+
+  function doAuth() {
+    var nameEl = document.getElementById('acc-name');
+    var pinEl = document.getElementById('acc-pin');
+    var pin2El = document.getElementById('acc-pin2');
+    if (!nameEl || !pinEl) return;
+
+    var name = (nameEl.value || '').trim().replace(/\s+/g, ' ');
+    var pin = (pinEl.value || '').trim();
+    state.authName = name;
+    var up = state.authMode === 'up';
+
+    if (name.length < 2) return authFail('Tên cần ít nhất 2 ký tự.');
+    if (!/^\d{4,6}$/.test(pin)) return authFail('Mã PIN gồm 4 tới 6 chữ số.');
+    if (up && pin2El && pin !== (pin2El.value || '').trim()) return authFail('Hai lần nhập mã PIN chưa giống nhau.');
+
+    var localUid = findLocalUser(name);
+
+    hashPin(name, pin).then(function (hash) {
+      if (up) return signUp(name, hash, localUid);
+      return signIn(name, hash, localUid, pin);
+    }).catch(function () {
+      authFail('Có lỗi khi xử lý, thử lại giúp mình.');
+    });
+  }
+
+  function signIn(name, hash, localUid, rawPin) {
+    if (localUid) {
+      var u = accounts.users[localUid];
+      var ok = u.pinHash ? u.pinHash === hash : u.pin === rawPin;
+      if (!ok) return authFail('Mã PIN chưa đúng.');
+      if (!u.pinHash) {
+        u.pinHash = hash;
+        delete u.pin;
+        saveAccounts();
+      }
+      switchUser(localUid);
+      return true;
+    }
+
+    if (!dbRef) {
+      return authFail('Máy này chưa có tài khoản tên đó. Chuyển sang Tạo tài khoản, hoặc đăng nhập trên máy đã tạo nó.');
+    }
+
+    state.authMsg = 'Đang kiểm tra...';
+    render();
+    return dbRef.doc('taikhoan/' + slugName(name)).get().then(function (snap) {
+      if (!snap.exists) {
+        return authFail('Chưa có tài khoản tên đó. Chuyển sang Tạo tài khoản nhé.');
+      }
+      var v = snap.data() || {};
+      if (v.pinHash !== hash) return authFail('Mã PIN chưa đúng.');
+      var uid = String(v.uid || '');
+      if (!uid) return authFail('Hồ sơ trên máy chủ bị thiếu dữ liệu, thử tạo lại tài khoản.');
+      accounts.users[uid] = { name: String(v.name || name), pinHash: hash, created: Number(v.at) || Date.now() };
+      saveAccounts();
+      return pullProfile(uid).then(function (remote) {
+        if (remote) writeJson(dataKey(uid), remote);
+        switchUser(uid);
+        return true;
+      });
+    }).catch(function () {
+      return authFail('Không hỏi được máy chủ. Kiểm tra mạng rồi thử lại.');
+    });
+  }
+
+  function signUp(name, hash, localUid) {
+    if (localUid) return authFail('Máy này đã có hồ sơ tên đó. Chuyển sang Đăng nhập.');
+
+    var uid = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+    if (!dbRef) {
+      accounts.users[uid] = { name: name, pinHash: hash, created: Date.now() };
+      saveAccounts();
+      switchUser(uid);
+      return true;
+    }
+
+    var ref = dbRef.doc('taikhoan/' + slugName(name));
+    state.authMsg = 'Đang tạo tài khoản...';
+    render();
+    return ref.acquire({ holder: uid, ttlMs: 8000 }).then(function (res) {
+      if (!res.acquired) return authFail('Có người đang đăng ký tên này. Chờ chút rồi thử lại.');
+      return ref.get().then(function (snap) {
+        if (snap.exists) return authFail('Tên này đã có người dùng. Chọn tên khác giúp mình.');
+        return ref.set({ name: name, pinHash: hash, uid: uid, at: Date.now() }).then(function () {
+          accounts.users[uid] = { name: name, pinHash: hash, created: Date.now() };
+          saveAccounts();
+          switchUser(uid);
+          return true;
+        });
+      });
+    }).catch(function () {
+      accounts.users[uid] = { name: name, pinHash: hash, created: Date.now() };
+      saveAccounts();
+      switchUser(uid);
+      state.authMsg = '';
+      return true;
+    });
+  }
+
   function switchUser(uid) {
     saveProfile();
     accounts.current = uid === GUEST ? null : uid;
     saveAccounts();
     profile = loadProfile(uidOf());
     state.authMsg = '';
+    state.authName = '';
+    state.authMode = 'in';
     render();
   }
 
@@ -663,6 +870,12 @@
     if (e.key === 'Escape' && document.body.dataset.sheet === 'open') sheetOpen(false);
   });
 
+  elMain.addEventListener('submit', function (e) {
+    if (e.target.id !== 'auth-form') return;
+    e.preventDefault();
+    doAuth();
+  });
+
   elMain.addEventListener('change', function (e) {
     if (e.target.id !== 'quiz-scope') return;
     var countSel = document.getElementById('quiz-count');
@@ -694,6 +907,7 @@
       profile.answers[qid] = pick.dataset.pick;
       saveProfile();
       pushBoard();
+      pushProfile();
       render();
       var card = document.getElementById('q-' + qid);
       if (card && state.view !== 'quiz-run') card.scrollIntoView({ block: 'nearest' });
@@ -724,6 +938,14 @@
       return;
     }
 
+    var modeBtn = e.target.closest('[data-auth-mode]');
+    if (modeBtn) {
+      state.authMode = modeBtn.dataset.authMode;
+      state.authMsg = '';
+      render();
+      return;
+    }
+
     var pickUser = e.target.closest('[data-pick-user]');
     if (pickUser) { switchUser(pickUser.dataset.pickUser); return; }
 
@@ -738,32 +960,6 @@
       saveAccounts();
       profile = loadProfile(GUEST);
       render();
-      return;
-    }
-
-    if (e.target.id === 'sign-in' || e.target.id === 'sign-up') {
-      var name = (document.getElementById('acc-name').value || '').trim();
-      var pin = (document.getElementById('acc-pin').value || '').trim();
-      if (name.length < 2) { state.authMsg = 'Tên cần ít nhất 2 ký tự.'; render(); return; }
-      if (!/^\d{4,6}$/.test(pin)) { state.authMsg = 'Mã PIN gồm 4 tới 6 chữ số.'; render(); return; }
-
-      var found = null;
-      Object.keys(accounts.users).forEach(function (uid) {
-        if (accounts.users[uid].name.toLowerCase() === name.toLowerCase()) found = uid;
-      });
-
-      if (e.target.id === 'sign-in') {
-        if (!found) { state.authMsg = 'Máy này chưa có tên đó. Bấm Tạo tài khoản mới.'; render(); return; }
-        if (accounts.users[found].pin !== pin) { state.authMsg = 'Mã PIN chưa khớp.'; render(); return; }
-        switchUser(found);
-        return;
-      }
-
-      if (found) { state.authMsg = 'Tên này đã có trên máy. Đăng nhập hoặc đổi tên khác.'; render(); return; }
-      var uid = 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-      accounts.users[uid] = { name: name, pin: pin, created: Date.now() };
-      saveAccounts();
-      switchUser(uid);
       return;
     }
 
@@ -845,6 +1041,7 @@
     }
     saveProfile();
     pushBoard();
+    pushProfile();
     state.view = 'quiz-done';
     render();
     window.scrollTo({ top: 0, behavior: 'smooth' });

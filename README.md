@@ -26,9 +26,17 @@ Hoặc tải repo về rồi mở `index.html`. Trang chạy hoàn toàn ở ph�
 
 ## Tài khoản và điểm
 
-Đăng nhập bằng tên hiển thị kèm mã PIN bốn tới sáu chữ số. Mã PIN chỉ để tách hồ sơ khi
-nhiều người dùng chung một máy, nó nằm nguyên văn trong localStorage nên đừng đặt trùng
-mật khẩu thật.
+Đăng nhập bằng tên hiển thị kèm mã PIN bốn tới sáu chữ số. Tên không phân biệt hoa thường
+và không phân biệt dấu, gõ `truong` vẫn vào được tài khoản `Trường`. Mã PIN được băm
+SHA-256 kèm tên trước khi lưu, không còn nằm nguyên văn trong máy.
+
+Đây vẫn không phải xác thực thật: mã PIN chỉ để tách hồ sơ khi nhiều người dùng chung một
+máy, đừng đặt trùng mật khẩu bạn đang xài ở chỗ khác.
+
+Khi mở bằng đường dẫn artifact, tài khoản và tiến độ được đẩy lên kho dữ liệu dùng chung
+nên đăng nhập ở máy khác vẫn thấy đủ điểm và bài đã làm. Kho này dùng chung cho mọi người
+mở được trang, nên bài đã làm của bạn không phải là dữ liệu riêng tư. Bản GitHub Pages
+không có máy chủ, tài khoản chỉ nằm trên máy đang dùng.
 
 | Việc | Điểm |
 | --- | --- |
