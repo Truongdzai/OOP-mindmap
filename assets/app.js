@@ -6,12 +6,6 @@
   var ACC_KEY = 'oop-acc-v2';
   var OLD_KEY = 'oop-on-thi-v1';
   var GUEST = '_khach';
-  var PISTON = 'https://emkc.org/api/v2/piston/execute';
-  var RUNTIME = {
-    cpp: { language: 'c++', file: 'main.cpp', pad: 'https://www.onlinegdb.com/online_c++_compiler' },
-    java: { language: 'java', file: 'Main.java', pad: 'https://www.onlinegdb.com/online_java_compiler' },
-    csharp: { language: 'csharp', file: 'Program.cs', pad: 'https://www.onlinegdb.com/online_csharp_compiler' }
-  };
   var PER_RIGHT = 10;
   var PER_10MIN = 2;
   var PER_GOOD_QUIZ = 25;
@@ -82,7 +76,6 @@
     query: '',
     filter: 'all',
     quiz: null,
-    runners: {},
     board: null,
     boardNote: 'Chưa nối được bảng chung, đang hiện hồ sơ trên máy này.',
     authMsg: ''
@@ -155,33 +148,6 @@
     var rows = [];
     for (var i = 1; i <= n; i++) rows.push(i);
     return rows.join('\n');
-  }
-
-  function prepareCode(code, lang) {
-    if (lang === 'cpp') {
-      var src = code.replace(/\bvoid\s+main\s*\(/g, 'int main(').replace(/\bstrcpy_s\s*\(/g, 'strcpy(');
-      var head = src.indexOf('#include') === -1
-        ? '#include <iostream>\n#include <string>\n#include <cstring>\n#include <cmath>\nusing namespace std;\n\n'
-        : '';
-      return head + src;
-    }
-    if (lang === 'csharp') {
-      return (code.indexOf('using System') === -1 ? 'using System;\n\n' : '') + code;
-    }
-    return code;
-  }
-
-  function fileNameFor(code, lang) {
-    if (lang !== 'java') return RUNTIME[lang].file;
-    var m = code.match(/public\s+class\s+(\w+)/) || code.match(/\bclass\s+(\w+)/);
-    return (m ? m[1] : 'Main') + '.java';
-  }
-
-  function runnerOf(q) {
-    if (!state.runners[q.id]) {
-      state.runners[q.id] = { src: prepareCode(q.code, q.lang), out: '', status: '' };
-    }
-    return state.runners[q.id];
   }
 
   var elRail = document.getElementById('rail-chapters');
@@ -332,31 +298,6 @@
     return true;
   }
 
-  function runnerHtml(q) {
-    if (!q.code || !RUNTIME[q.lang]) return '';
-    if (!q.runnable) {
-      return '<div class="outbox"><span class="outbox-label">Đầu ra</span>' +
-        '<p>Đoạn này chưa có hàm main nên không chạy thẳng được, chạy lên cũng không in ra gì. ' +
-        'Nó chỉ dùng để đọc phần khai báo lớp.</p></div>';
-    }
-    var r = runnerOf(q);
-    var cls = r.status === 'err' ? ' err' : r.status === 'ok' ? ' ok' : '';
-    var out = r.out ? '<pre class="run-out' + cls + '">' + esc(r.out) + '</pre>' : '';
-    return '<div class="runner">' +
-      '<div class="editor">' +
-      '<div class="editor-code">' +
-      '<pre class="gutter" aria-hidden="true">' + gutterFor(r.src) + '</pre>' +
-      '<textarea class="run-src" id="src-' + q.id + '" data-run-src="' + q.id + '" spellcheck="false" wrap="off" aria-label="Code chạy thử">' + esc(r.src) + '</textarea>' +
-      '</div>' +
-      '<div class="editor-side">' +
-      '<button class="run-go" data-run-go="' + q.id + '"' + (r.status === 'busy' ? ' disabled' : '') + '>' +
-      (r.status === 'busy' ? 'Đang chạy' : 'Chạy') + '</button>' +
-      '<button class="run-mini" data-run-reset="' + q.id + '">Cài đặt lại</button>' +
-      '<button class="run-mini" data-run-copy="' + q.id + '">Chép code</button>' +
-      '<a class="run-mini" href="' + RUNTIME[q.lang].pad + '" target="_blank" rel="noopener">Trình biên dịch</a>' +
-      '</div></div>' + out + '</div>';
-  }
-
   function questionCard(q, ch, showChapter, source) {
     var exam = !!source;
     var picked = (source || profile.answers)[q.id];
@@ -393,7 +334,7 @@
       (q.note ? '<p class="note">' + esc(q.note) + '</p>' : '') + '</div>' : '';
 
     return '<article class="' + cls + '" id="q-' + q.id + '">' + head +
-      '<p class="stem">' + esc(q.stem) + '</p>' + code + runnerHtml(q) +
+      '<p class="stem">' + esc(q.stem) + '</p>' + code +
       '<div class="options">' + opts + '</div>' + verdict + why + '</article>';
   }
 
@@ -515,7 +456,7 @@
     }).join('');
     var nav = '<details class="padwrap"><summary>Danh sách câu · đã làm ' +
       qz.answeredCount + '/' + qz.items.length + '</summary><div class="pads">' + pads + '</div></details>';
-    var prev = qz.index > 0 ? '<button class="run-mini" id="quiz-prev">Câu trước</button>' : '';
+    var prev = qz.index > 0 ? '<button class="link-btn" id="quiz-prev">Câu trước</button>' : '';
     var next = qz.index + 1 < qz.items.length
       ? '<button class="solid-btn" id="quiz-next">Câu tiếp</button>'
       : '<button class="solid-btn" id="quiz-next">Nộp bài</button>';
@@ -602,9 +543,9 @@
     if (accounts.current) {
       var u = accounts.users[accounts.current];
       return '<div class="panel"><h2>' + esc(u.name) + '</h2>' + cards + rules +
-        '<div class="run-actions">' +
+        '<div class="btn-row">' +
         '<button class="solid-btn" id="sign-out">Đăng xuất</button>' +
-        '<button class="run-mini" id="wipe">Xóa hồ sơ này</button>' +
+        '<button class="link-btn" id="wipe">Xóa hồ sơ này</button>' +
         '</div></div>';
     }
 
@@ -624,9 +565,9 @@
       '<input class="search" id="acc-name" maxlength="24" placeholder="Nguyễn Văn A"></label>' +
       '<label class="field" for="acc-pin"><span>Mã PIN 4 số</span>' +
       '<input class="search" id="acc-pin" inputmode="numeric" maxlength="6" placeholder="0000"></label>' +
-      '<div class="run-actions">' +
+      '<div class="btn-row">' +
       '<button class="solid-btn" id="sign-in">Đăng nhập</button>' +
-      '<button class="run-mini" id="sign-up">Tạo tài khoản mới</button>' +
+      '<button class="link-btn" id="sign-up">Tạo tài khoản mới</button>' +
       '</div>' + list + rules + '</div>';
   }
 
@@ -651,17 +592,6 @@
     else if (state.view === 'account') elMain.innerHTML = renderAccount();
     else if (state.query.trim().length >= 2) elMain.innerHTML = renderSearch();
     else elMain.innerHTML = renderChapter();
-
-    bindEditors();
-  }
-
-  function bindEditors() {
-    Array.prototype.forEach.call(elMain.querySelectorAll('.run-src'), function (ta) {
-      var gut = ta.parentNode.querySelector('.gutter');
-      ta.addEventListener('scroll', function () {
-        gut.scrollTop = ta.scrollTop;
-      });
-    });
   }
 
   function goto(view) {
@@ -672,106 +602,12 @@
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  function copyText(text) {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text).catch(function () { return legacyCopy(text); });
-    }
-    return Promise.resolve(legacyCopy(text));
-  }
-
-  function legacyCopy(text) {
-    try {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand('copy');
-      document.body.removeChild(ta);
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function trimOut(text) {
-    var t = String(text || '').replace(/\s+$/, '');
-    return t.length > 4000 ? t.slice(0, 4000) + '\n... (cắt bớt)' : t;
-  }
-
-  function runCode(qid) {
-    var item = byId(qid);
-    if (!item) return;
-    var q = item.q;
-    var r = runnerOf(q);
-    var rt = RUNTIME[q.lang];
-    r.status = 'busy';
-    r.out = 'Đang gửi code đi biên dịch...';
-    render();
-
-    var done = false;
-    var timer = setTimeout(function () {
-      if (done) return;
-      done = true;
-      fallback(r, 'máy chủ không trả lời kịp');
-    }, 25000);
-
-    fetch(PISTON, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        language: rt.language,
-        version: '*',
-        files: [{ name: fileNameFor(r.src, q.lang), content: r.src }],
-        stdin: '',
-        compile_timeout: 10000,
-        run_timeout: 5000
-      })
-    }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    }).then(function (data) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      var compile = data.compile || {};
-      var run = data.run || {};
-      if (compile.stderr && compile.stderr.trim()) {
-        r.out = 'Lỗi biên dịch:\n' + compile.stderr;
-        r.status = 'err';
-      } else {
-        var text = (run.stdout || '') + (run.stderr || '');
-        if (!text.trim()) text = '(chạy xong, không in ra gì)';
-        r.status = run.stderr && run.stderr.trim() ? 'err' : 'ok';
-        r.out = text;
-      }
-      r.out = trimOut(r.out);
-      render();
-    }).catch(function (err) {
-      if (done) return;
-      done = true;
-      clearTimeout(timer);
-      fallback(r, String(err && err.message ? err.message : err));
-    });
-  }
-
-  function fallback(r, reason) {
-    copyText(r.src);
-    r.status = 'err';
-    r.out = 'Trang này không gọi thẳng được máy chủ biên dịch (' + reason + ').\n' +
-      'Code đã chép sẵn vào bộ nhớ tạm. Bấm "Trình biên dịch", dán vào rồi chạy.';
-    render();
-  }
-
   function switchUser(uid) {
     saveProfile();
     accounts.current = uid === GUEST ? null : uid;
     saveAccounts();
     profile = loadProfile(uidOf());
     state.authMsg = '';
-    state.runners = {};
     render();
   }
 
@@ -827,18 +663,6 @@
     if (e.key === 'Escape' && document.body.dataset.sheet === 'open') sheetOpen(false);
   });
 
-  elMain.addEventListener('input', function (e) {
-    var box = e.target.closest('[data-run-src]');
-    if (box) {
-      var item = byId(box.dataset.runSrc);
-      if (item) {
-        runnerOf(item.q).src = box.value;
-        var gut = box.parentNode.querySelector('.gutter');
-        if (gut) gut.textContent = gutterFor(box.value);
-      }
-    }
-  });
-
   elMain.addEventListener('change', function (e) {
     if (e.target.id !== 'quiz-scope') return;
     var countSel = document.getElementById('quiz-count');
@@ -846,28 +670,6 @@
   });
 
   elMain.addEventListener('click', function (e) {
-    var go = e.target.closest('[data-run-go]');
-    if (go) { runCode(go.dataset.runGo); return; }
-
-    var cp = e.target.closest('[data-run-copy]');
-    if (cp) {
-      copyText(runnerOf(byId(cp.dataset.runCopy).q).src);
-      cp.textContent = 'Đã chép';
-      setTimeout(function () { cp.textContent = 'Chép code'; }, 1600);
-      return;
-    }
-
-    var rs = e.target.closest('[data-run-reset]');
-    if (rs) {
-      var itemR = byId(rs.dataset.runReset);
-      var rr = runnerOf(itemR.q);
-      rr.src = prepareCode(itemR.q.code, itemR.q.lang);
-      rr.out = '';
-      rr.status = '';
-      render();
-      return;
-    }
-
     var jumpTo = e.target.closest('[data-jump]');
     if (jumpTo && state.quiz) {
       state.quiz.index = Number(jumpTo.dataset.jump);

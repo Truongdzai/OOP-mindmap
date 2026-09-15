@@ -8,11 +8,13 @@ Trang ôn tập cho môn Lập trình hướng đối tượng, mã môn 229034,
 - Mỗi câu có một lời giải viết bằng lời lẽ đơn giản, nói rõ vì sao chọn đáp án đó và bẫy thường gặp.
 - Mỗi câu có kèm vị trí cần xem lại trong slide bài giảng, lấy từ chính phần tham chiếu trong slide.
 - Mỗi chương có một phần tóm tắt lý thuyết bám theo slide, gồm bảng phạm vi truy cập, bảng phân biệt quá tải với ghi đè và bảng quyết định đa hình.
-- 317 câu có code chạy thử được ngay trên trang; 29 câu còn lại thiếu hàm main nên chỉ ghi rõ đầu ra.
 
-## Cách dùng
+## Mở trên điện thoại
 
-Mở `index.html` bằng trình duyệt. Trang chạy hoàn toàn ở phía trình duyệt, không cần cài đặt gì thêm.
+Trang chạy tại **https://truongdzai.github.io/OOP-mindmap/** — mở bằng trình duyệt điện thoại
+là ôn được ngay, không cần cài gì. Thêm vào màn hình chính để mở nhanh lần sau.
+
+Hoặc tải repo về rồi mở `index.html`. Trang chạy hoàn toàn ở phía trình duyệt, không cần máy chủ.
 
 - Chọn chương ở cột bên trái, bấm vào đáp án để xem kết quả và lời giải.
 - Ô tìm kiếm lọc theo từ khóa trên cả 360 câu, ví dụ constructor, virtual, static, interface.
@@ -36,20 +38,9 @@ mật khẩu thật.
 
 Đồng hồ ôn bài chỉ chạy khi tab đang mở và có thao tác trong vòng 90 giây gần nhất.
 
-Bảng xếp hạng xếp theo điểm, bằng điểm thì ai đúng nhiều câu hơn đứng trên. Khi mở bằng
-đường dẫn artifact, điểm được đồng bộ qua kho dữ liệu dùng chung nên thấy được cả người
-khác. Mở từ máy hoặc từ GitHub Pages thì bảng chỉ liệt kê những hồ sơ trên chính máy đó.
-Không có xác thực phía máy chủ, ai mở được trang cũng ghi được vào bảng.
-
-## Chạy thử code
-
-Trước khi chạy, trang tự vá đoạn code cho biên dịch được: thêm `#include` và
-`using namespace std;` cho C++, đổi `void main` thành `int main`, đổi `strcpy_s` thành
-`strcpy`, thêm `using System;` cho C#, đặt tên file Java theo lớp `public class`.
-
-Nút Chạy gửi code tới API Piston tại `emkc.org`. Bản artifact bị sandbox chặn gọi mạng
-nên ở đó nút Chạy sẽ chép code vào bộ nhớ tạm và mời bạn mở trình biên dịch online.
-Mở từ máy hoặc từ một máy chủ web bình thường thì nút Chạy gọi thẳng được.
+Bảng xếp hạng xếp theo điểm, bằng điểm thì ai đúng nhiều câu hơn đứng trên. Bản trên
+GitHub Pages không có máy chủ nên bảng chỉ liệt kê những hồ sơ tạo trên chính máy đó.
+Muốn xếp hạng chung nhiều người thì phải mở bằng đường dẫn artifact của Claude.
 
 Tiến độ, điểm và giờ ôn lưu trong trình duyệt của máy đang dùng.
 
@@ -61,6 +52,7 @@ Tiến độ, điểm và giờ ôn lưu trong trình duyệt của máy đang d
 | `assets/style.css` | Giao diện, hỗ trợ cả nền sáng và nền tối |
 | `assets/app.js` | Xử lý hiển thị, chấm điểm, tìm kiếm, luyện đề |
 | `assets/data.js` | Dữ liệu 360 câu hỏi và phần tóm tắt lý thuyết |
+| `.github/workflows/pages.yml` | Tự đẩy trang lên GitHub Pages mỗi lần push |
 
 ## Chương
 
